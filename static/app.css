@@ -1,0 +1,330 @@
+/* پیام‌رسان رز — تم رز، راست‌به‌چپ */
+:root{
+  --rose:#a63f68; --rose-d:#8f3155; --rose-x:#6f2340;
+  --rose-l:#f2cbd9; --rose-xl:#fdf1f4;
+  --mine:#f7d9e4; --card:#fff; --line:#ecd6de;
+  --txt:#392c35; --mut:#8a6b7a; --ok:#03a678; --err:#c0392b;
+  --rad:14px; --shadow:0 1px 3px rgba(111,35,64,.10),0 4px 16px rgba(111,35,64,.06);
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font-family:'Vazirmatn','Segoe UI',Tahoma,'Iranian Sans',sans-serif;
+  background:var(--rose-xl);color:var(--txt);font-size:15px;line-height:1.7;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:none;background:none}
+h1,h2,h3,p{margin:0}
+[hidden]{display:none!important}
+.flex1{flex:1}
+
+/* ---------- دکمه‌ها ---------- */
+.btn{padding:10px 18px;border-radius:12px;border:1px solid var(--line);background:var(--card);
+  transition:.15s;font-weight:600}
+.btn.primary{background:var(--rose);color:#fff;border-color:var(--rose)}
+.btn.primary:hover{background:var(--rose-d)}
+.btn.ghost{background:var(--rose-xl);color:var(--rose-d);border-color:var(--rose-l)}
+.btn.ghost:hover{background:var(--rose-l)}
+.btn.wide{width:100%}
+.btn:disabled{opacity:.5;cursor:default}
+.iconbtn{width:40px;height:40px;border-radius:12px;display:inline-flex;align-items:center;
+  justify-content:center;color:var(--mut);transition:.15s;flex:none}
+.iconbtn svg{width:22px;height:22px}
+.iconbtn:hover{background:var(--rose-l);color:var(--rose-d)}
+.iconbtn.ok{color:var(--ok)}
+.iconbtn.send{background:var(--rose);color:#fff}
+.iconbtn.send:hover{background:var(--rose-d)}
+.iconbtn.danger{color:var(--err)}
+
+/* ---------- ورود ---------- */
+#login{display:flex;align-items:center;justify-content:center;min-height:100dvh;padding:16px}
+.login-card{background:var(--card);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);
+  padding:34px 30px;width:min(400px,100%)}
+.brand{display:flex;gap:14px;align-items:center;margin-bottom:22px}
+.logo{width:52px;height:52px;flex:none}
+.logo.sm{width:30px;height:30px}
+.brand h1{font-size:20px;color:var(--rose-x)}
+.brand p{color:var(--mut);font-size:12.5px}
+.login-card label{display:block;margin:12px 0 4px;font-size:13px;color:var(--mut)}
+.login-card input{width:100%;padding:11px 14px;border:1.5px solid var(--line);border-radius:12px;
+  background:var(--rose-xl);outline:none;transition:.15s}
+.login-card input:focus{border-color:var(--rose);background:#fff}
+.login-card .btn{margin-top:16px}
+.err{color:var(--err);font-size:13px;min-height:20px;margin-top:8px}
+.hint{color:var(--mut);font-size:13px}
+.login-note{margin-top:18px;color:var(--mut);font-size:12.5px;text-align:center;
+  border-top:1px dashed var(--line);padding-top:12px}
+
+/* ---------- چیدمان اپ ---------- */
+#app{display:flex;height:100dvh}
+#sidebar{width:340px;flex:none;background:var(--card);border-left:1px solid var(--line);
+  display:flex;flex-direction:column;min-height:0}
+.side-top{padding:14px 14px 8px;border-bottom:1px solid var(--line)}
+.side-brand{display:flex;align-items:center;gap:9px;color:var(--rose-x);margin-bottom:10px}
+.searchbox{position:relative;display:flex;align-items:center}
+.searchbox .s-ic{position:absolute;right:10px;color:var(--mut);display:flex}
+.searchbox .s-ic svg{width:17px;height:17px}
+.searchbox input{width:100%;padding:9px 36px 9px 30px;border:1.5px solid var(--line);border-radius:12px;
+  background:var(--rose-xl);outline:none;font-size:13.5px}
+.searchbox input:focus{border-color:var(--rose);background:#fff}
+.searchbox button{position:absolute;left:6px;color:var(--mut);font-size:16px;width:22px;height:22px}
+.tabs{display:flex;gap:4px;margin-top:10px}
+.tab{flex:1;padding:8px;border-radius:10px;color:var(--mut);font-weight:600;transition:.15s}
+.tab.on{background:var(--rose-l);color:var(--rose-d)}
+
+.list{flex:1;overflow-y:auto;min-height:0}
+.list::-webkit-scrollbar{width:9px}
+.list::-webkit-scrollbar-thumb{background:var(--rose-l);border-radius:9px}
+.row{display:flex;align-items:center;gap:10px;width:100%;text-align:right;padding:10px 12px;
+  border-radius:12px;transition:.12s;position:relative}
+.row:hover{background:var(--rose-xl)}
+.row.on{background:var(--rose-l)}
+.row .r-av{position:relative;flex:none}
+.row .r-main{flex:1;min-width:0}
+.row .r-name{font-weight:700;display:flex;align-items:center;gap:6px}
+.row .r-sub{color:var(--mut);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .r-sub.typing{color:var(--ok)}
+.row .r-side{display:flex;flex-direction:column;align-items:flex-start;gap:4px;flex:none}
+.row .r-time{font-size:11px;color:var(--mut)}
+.badge{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--rose);color:#fff;
+  font-size:11.5px;display:inline-flex;align-items:center;justify-content:center}
+.dot{width:10px;height:10px;border-radius:50%;background:#c5b3bc;position:absolute;bottom:0;left:0;
+  border:2px solid var(--card)}
+.dot.on{background:var(--ok)}
+.sect{padding:12px 14px 4px;color:var(--rose-d);font-size:12px;font-weight:800;
+  border-top:1px solid var(--line)}
+.sect:first-child{border-top:none}
+.empty-list{padding:30px 16px;text-align:center;color:var(--mut);font-size:13px}
+
+.side-bottom{padding:10px 12px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.chip{display:flex;align-items:center;gap:9px;flex:1;min-width:0;padding:6px 8px;border-radius:12px}
+.chip:hover{background:var(--rose-xl)}
+.chip-name{font-weight:700;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admin-btn{border:1px solid var(--line)}
+
+/* ---------- آواتار ---------- */
+.av{border-radius:50%;background:var(--rose-l);color:var(--rose-d);display:inline-flex;
+  align-items:center;justify-content:center;font-weight:800;overflow:hidden;flex:none;user-select:none}
+.av img{width:100%;height:100%;object-fit:cover}
+.av.sm{width:38px;height:38px;font-size:15px}
+.av.md{width:46px;height:46px;font-size:18px}
+.av.lg{width:74px;height:74px;font-size:28px}
+.av .gicon{display:flex}
+.av .gicon svg{width:55%;height:55%}
+
+/* ---------- چت ---------- */
+#chatPane{flex:1;display:flex;flex-direction:column;min-width:0;position:relative;
+  background:
+   radial-gradient(circle at 18% 12%, rgba(166,63,104,.045) 0 140px, transparent 140px),
+   radial-gradient(circle at 82% 88%, rgba(166,63,104,.045) 0 170px, transparent 170px),
+   var(--rose-xl)}
+#chatHeader{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--card);
+  border-bottom:1px solid var(--line);min-height:64px}
+.ch-text{min-width:0;display:flex;flex-direction:column}
+.ch-text strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-text small{color:var(--mut);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-text small.typing{color:var(--ok)}
+
+#pinnedBar{display:flex;align-items:center;gap:8px;background:#fff6ea;border-bottom:1px solid #f0dfc8;
+  padding:7px 16px;font-size:13px;cursor:pointer}
+#pinnedBar svg{width:16px;height:16px;color:#b98121;flex:none}
+#pinnedBar .p-body{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#pinnedBar .p-unpin{color:#b98121;font-size:12px;flex:none}
+
+#welcome{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;color:var(--mut);text-align:center;padding:20px}
+#welcome .logo{width:74px;height:74px}
+#welcome h2{color:var(--rose-x)}
+#welcome .btn{margin-top:6px}
+
+#msgs{flex:1;overflow-y:auto;padding:14px 16px 8px;display:flex;flex-direction:column;gap:2px}
+#msgs::-webkit-scrollbar{width:9px}
+#msgs::-webkit-scrollbar-thumb{background:var(--rose-l);border-radius:9px}
+.load-older{align-self:center;margin-bottom:10px;font-size:12.5px;color:var(--rose-d);
+  border:1px solid var(--line);background:var(--card);border-radius:20px;padding:5px 16px}
+.date-chip{align-self:center;background:rgba(166,63,104,.10);color:var(--rose-d);font-size:11.5px;
+  padding:3px 14px;border-radius:20px;margin:12px 0 6px;font-weight:700}
+.msg{display:flex;gap:8px;max-width:min(600px,82%);margin:2px 0;position:relative;align-self:flex-start}
+.msg.mine{align-self:flex-end}
+.msg .m-av{align-self:flex-end;visibility:hidden}
+.msg.first .m-av{visibility:visible}
+.bubble{background:var(--card);border-radius:14px;padding:7px 12px 6px;box-shadow:var(--shadow);
+  min-width:70px;max-width:100%;word-break:break-word}
+.msg.mine .bubble{background:var(--mine)}
+.m-head{display:flex;align-items:baseline;gap:7px;margin-bottom:1px}
+.m-name{font-weight:800;font-size:12.5px}
+.m-time{font-size:10.5px;color:var(--mut)}
+.m-edited{font-size:10.5px;color:var(--mut);font-style:italic}
+.m-body{white-space:pre-wrap;overflow-wrap:anywhere}
+.m-foot{display:flex;justify-content:flex-end;align-items:center;gap:4px;margin-top:2px;height:16px}
+.ticks{display:inline-flex;color:var(--mut)}
+.ticks svg{width:17px;height:17px}
+.ticks.read{color:var(--ok)}
+.ticks i{font-style:normal;font-size:10.5px;margin-right:3px;color:var(--mut)}
+.pin-tag{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;color:#b98121}
+.pin-tag svg{width:12px;height:12px}
+.m-act{position:absolute;top:4px;left:-34px;opacity:0;transition:.12s}
+.msg:hover .m-act,.msg.menu-open .m-act{opacity:1}
+@media(hover:none){.m-act{opacity:.7}}
+
+.quote{border-right:3px solid var(--rose);background:rgba(166,63,104,.07);border-radius:8px;
+  padding:4px 9px;margin:2px 0 5px;cursor:pointer;min-width:0}
+.quote b{display:block;font-size:11.5px;color:var(--rose-d)}
+.quote span{font-size:12px;color:var(--mut);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.m-img{display:block;max-width:min(340px,100%);max-height:300px;border-radius:10px;cursor:pointer;margin-top:3px}
+.m-video{display:block;max-width:min(340px,100%);border-radius:10px;margin-top:3px}
+.m-audio{width:min(280px,60vw);margin-top:4px;display:block}
+.voicechip{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--mut);margin-top:2px}
+.filechip{display:flex;align-items:center;gap:9px;padding:7px 10px;border:1px solid var(--line);
+  border-radius:11px;background:#fff;text-decoration:none;color:var(--txt);margin-top:3px;max-width:100%}
+.filechip:hover{border-color:var(--rose)}
+.filechip .f-ic{width:34px;height:34px;border-radius:9px;background:var(--rose-l);color:var(--rose-d);
+  display:flex;align-items:center;justify-content:center;flex:none}
+.filechip .f-ic svg{width:19px;height:19px}
+.filechip .f-name{font-size:12.5px;font-weight:700;max-width:210px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.filechip .f-size{font-size:11px;color:var(--mut);display:block}
+
+/* ---------- نوار پاسخ/ویرایش/ضبط ---------- */
+#composerWrap{background:var(--card);border-top:1px solid var(--line);padding:8px 12px
+  calc(8px + env(safe-area-inset-bottom))}
+#editBar,#replyBar,#recBar{display:flex;align-items:center;gap:9px;padding:6px 12px;margin-bottom:6px;
+  border-radius:11px;font-size:13px}
+#editBar{background:#fff6ea;color:#8a6a1f}
+#replyBar{background:var(--rose-xl);border-right:3px solid var(--rose)}
+#replyBar b{color:var(--rose-d);font-size:12px;display:block}
+#replyBar small{color:var(--mut);display:block;max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#recBar{background:#fdeeee;color:var(--err)}
+.rec-dot{width:11px;height:11px;border-radius:50%;background:var(--err);animation:blink 1s infinite}
+@keyframes blink{50%{opacity:.25}}
+#recTime{font-weight:800;font-variant-numeric:tabular-nums}
+#pendingChips{display:flex;gap:8px;flex-wrap:wrap}
+.pchip{display:flex;align-items:center;gap:8px;background:var(--rose-xl);border:1px solid var(--rose-l);
+  border-radius:11px;padding:5px 10px;font-size:12px;max-width:280px}
+.pchip img{width:38px;height:38px;border-radius:8px;object-fit:cover}
+.pchip .p-name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pchip .p-sub{color:var(--mut);font-size:11px;display:block}
+#composer{display:flex;gap:6px;align-items:flex-end}
+#body{flex:1;resize:none;max-height:120px;padding:9px 13px;border:1.5px solid var(--line);
+  border-radius:13px;background:var(--rose-xl);outline:none;transition:.15s;line-height:1.5}
+#body:focus{border-color:var(--rose);background:#fff}
+
+/* ---------- ایموجی ---------- */
+#emojiPop{position:fixed;z-index:70;background:var(--card);border:1px solid var(--line);border-radius:16px;
+  box-shadow:0 8px 30px rgba(111,35,64,.18);padding:10px;display:grid;grid-template-columns:repeat(8,1fr);
+  gap:2px;max-width:320px}
+#emojiPop button{font-size:19px;width:34px;height:34px;border-radius:9px;display:flex;
+  align-items:center;justify-content:center}
+#emojiPop button:hover{background:var(--rose-xl)}
+
+/* ---------- منوی راست‌کلیک ---------- */
+#ctxMenu{position:fixed;z-index:80;background:var(--card);border:1px solid var(--line);border-radius:14px;
+  box-shadow:0 8px 30px rgba(111,35,64,.18);padding:6px;min-width:180px}
+#ctxMenu button{display:flex;align-items:center;gap:10px;width:100%;text-align:right;padding:8px 12px;
+  border-radius:9px;font-size:13.5px}
+#ctxMenu button svg{width:17px;height:17px;color:var(--mut)}
+#ctxMenu button:hover{background:var(--rose-xl)}
+#ctxMenu button.danger,#ctxMenu button.danger svg{color:var(--err)}
+
+/* ---------- پنل اعضا ---------- */
+#membersPanel{width:300px;flex:none;background:var(--card);border-right:1px solid var(--line);
+  display:flex;flex-direction:column}
+#membersPanel header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;
+  border-bottom:1px solid var(--line);color:var(--rose-x)}
+.mp-foot{padding:10px 12px;border-top:1px solid var(--line)}
+.mp-row{display:flex;align-items:center;gap:10px;padding:8px 12px}
+.mp-row .r-main{flex:1;min-width:0}
+.mp-row .r-name{font-weight:700;font-size:13.5px}
+.mp-row .r-sub{font-size:11.5px;color:var(--mut)}
+.role-tag{font-size:10.5px;background:var(--rose-l);color:var(--rose-d);border-radius:8px;padding:1px 7px;font-weight:700}
+.role-tag.own{background:var(--rose);color:#fff}
+.mp-actions{display:flex;gap:2px;flex:none}
+.mp-actions .iconbtn{width:32px;height:32px}
+.mp-actions .iconbtn svg{width:17px;height:17px}
+.peer-box{padding:22px 16px;text-align:center;border-bottom:1px solid var(--line);display:flex;
+  flex-direction:column;gap:8px;align-items:center}
+.peer-box b{font-size:16px}
+.peer-box small{color:var(--mut)}
+
+/* ---------- مودال ---------- */
+.overlay{position:fixed;inset:0;background:rgba(63,26,41,.45);backdrop-filter:blur(2px);z-index:50;
+  display:flex;align-items:center;justify-content:center;padding:18px}
+.m-card{background:var(--card);border-radius:20px;width:min(430px,100%);max-height:88dvh;
+  display:flex;flex-direction:column;box-shadow:0 18px 60px rgba(63,26,41,.35);padding:0}
+.m-card.big{width:min(760px,100%)}
+.m-card header{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;
+  border-bottom:1px solid var(--line);color:var(--rose-x);flex:none}
+.m-card header strong{font-size:16px}
+.m-close{color:var(--mut)}
+.m-card .field{display:block;margin:12px 0 0;font-size:13px;color:var(--mut)}
+.m-card .field input{width:100%;margin-top:4px;padding:10px 13px;border:1.5px solid var(--line);
+  border-radius:12px;background:var(--rose-xl);outline:none}
+.m-card .field input:focus{border-color:var(--rose);background:#fff}
+.m-card .btn{margin-top:14px}
+.m-card hr{border:none;border-top:1px dashed var(--line);margin:16px 0 4px}
+.m-card .hint{margin-top:12px}
+.checkline{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13.5px;color:var(--txt);cursor:pointer}
+.checkline input{width:17px;height:17px;accent-color:var(--rose)}
+.seg{display:flex;border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:14px}
+.seg button{flex:1;padding:9px;color:var(--mut);font-weight:700}
+.seg button.on{background:var(--rose);color:#fff}
+.pick{min-height:180px;max-height:330px;border:1px solid var(--line);border-radius:14px;margin-top:12px;padding:4px}
+.pick .row{padding:7px 10px}
+.pick .row.sel{background:var(--rose-l)}
+.pick .row input{width:17px;height:17px;accent-color:var(--rose)}
+.list.pick .empty-list{border:none}
+.searchbox.in-modal{margin-top:12px}
+
+/* ---------- پروفایل ---------- */
+.pf-top{display:flex;align-items:center;gap:14px;margin-top:16px}
+
+/* ---------- پنل مدیریت ---------- */
+#adTabs{padding:12px 14px 0;border-bottom:1px solid var(--line)}
+#adTabs .tab{flex:none;padding:8px 14px;font-size:13px}
+.ad-body{overflow-y:auto;padding:16px 18px 20px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.stat{background:var(--rose-xl);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center}
+.stat b{display:block;font-size:22px;color:var(--rose-d)}
+.stat span{font-size:12px;color:var(--mut)}
+.ad-form{display:flex;gap:8px;flex-wrap:wrap;align-items:end;background:var(--rose-xl);
+  padding:12px;border-radius:14px;margin-bottom:14px}
+.ad-form label{font-size:12px;color:var(--mut);display:flex;flex-direction:column;gap:4px;flex:1;min-width:130px}
+.ad-form input,.ad-form select{padding:9px 11px;border:1.5px solid var(--line);border-radius:10px;
+  background:#fff;outline:none}
+.ad-form .btn{flex:none;margin:0}
+table.ad-t{width:100%;border-collapse:collapse;font-size:13px}
+table.ad-t th{background:var(--rose-xl);color:var(--rose-d);font-size:12px;padding:9px 10px;text-align:right;
+  border-bottom:1px solid var(--line)}
+table.ad-t td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.ad-t tr:hover td{background:var(--rose-xl)}
+table.ad-t input[type=checkbox]{width:16px;height:16px;accent-color:var(--rose)}
+table.ad-t select{padding:5px 8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.t-act{display:flex;gap:4px}
+.t-act .iconbtn{width:30px;height:30px;border-radius:8px}
+.t-act .iconbtn svg{width:16px;height:16px}
+.backup-box{background:var(--rose-xl);border:1px solid var(--line);border-radius:14px;padding:18px;
+  display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.backup-box p{font-size:13px;color:var(--mut)}
+.ad-u{display:flex;align-items:center;gap:8px}
+
+/* ---------- لایت‌باکس / توست ---------- */
+.overlay.lb{background:rgba(30,10,18,.88)}
+#lbImg{max-width:92vw;max-height:88dvh;border-radius:10px}
+.lb-close{position:fixed;top:16px;left:16px;color:#fff;background:rgba(255,255,255,.12)}
+.lb-close:hover{background:rgba(255,255,255,.22);color:#fff}
+#toast{position:fixed;bottom:26px;right:50%;transform:translateX(50%);z-index:90;background:var(--rose-x);
+  color:#fff;padding:10px 20px;border-radius:13px;font-size:13.5px;box-shadow:var(--shadow);max-width:88vw;
+  animation:pop .18s}
+#toast.err{background:var(--err)}
+@keyframes pop{from{opacity:0;transform:translateX(50%) translateY(8px)}}
+.msg.new{animation:msgin .18s}
+@keyframes msgin{from{opacity:0;transform:translateY(6px)}}
+
+/* ---------- واکنش‌گرا ---------- */
+@media(max-width:820px){
+  #sidebar{position:fixed;inset:0;z-index:30;width:100%;transform:translateX(100%);transition:.22s}
+  #sidebar.open{transform:none}
+  #chBack{display:inline-flex}
+  #membersPanel{position:fixed;inset:0;z-index:40;width:100%}
+  .msg{max-width:92%}
+  .m-act{left:auto;top:-30px}
+}
+@media(min-width:821px){#chBack{display:none!important}}

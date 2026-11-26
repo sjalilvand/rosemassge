@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>پیام‌رسان رز | Rose Messenger</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23a63f68'/%3E%3Cpath d='M16 7c-4 2-6 5-6 8a6 6 0 0 0 12 0c0-3-2-6-6-8z' fill='%23ffd7e4'/%3E%3Cpath d='M16 21v5M16 24c-2 0-3.5-1-4-2.5M16 24c2 0 3.5-1 4-2.5' stroke='%23ffe9f0' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<!-- ================= صفحه ورود ================= -->
+<div id="login">
+  <div class="login-card">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" class="logo" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#a63f68"/><path d="M16 7c-4 2-6 5-6 8a6 6 0 0 0 12 0c0-3-2-6-6-8z" fill="#ffd7e4"/><path d="M16 21v5M16 24c-2 0-3.5-1-4-2.5M16 24c2 0 3.5-1 4-2.5" stroke="#ffe9f0" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
+      <div>
+        <h1>پیام‌رسان رز</h1>
+        <p>Rose Messenger — شرکت مشاوره رز</p>
+      </div>
+    </div>
+
+    <form id="loginForm" autocomplete="off">
+      <label>نام کاربری
+        <input id="lxUser" required autocomplete="username">
+      </label>
+      <label>رمز عبور
+        <input id="lxPass" type="password" required autocomplete="current-password">
+      </label>
+      <button class="btn primary wide" id="lxEnter" type="submit">ورود</button>
+      <p id="lxErr" class="err"></p>
+    </form>
+
+    <form id="setupForm" hidden autocomplete="off">
+      <p class="hint">اولین اجرای سامانه است. یک حساب «مدیر» بسازید:</p>
+      <label>نام کاربری مدیر<input id="sxUser" required></label>
+      <label>رمز عبور (حداقل ۱۲ نویسه)
+        <input id="sxPass" type="password" minlength="12" required>
+      </label>
+      <button class="btn primary wide" id="sxMake" type="submit">ایجاد حساب مدیر</button>
+      <p id="sxErr" class="err"></p>
+    </form>
+
+    <p class="login-note">ثبت‌نام کاربران توسط مدیر سامانه انجام می‌شود.</p>
+  </div>
+</div>
+
+<!-- ================= اپلیکیشن ================= -->
+<div id="app" hidden>
+
+  <aside id="sidebar">
+    <div class="side-top">
+      <div class="side-brand">
+        <svg viewBox="0 0 32 32" class="logo sm" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#a63f68"/><path d="M16 7c-4 2-6 5-6 8a6 6 0 0 0 12 0c0-3-2-6-6-8z" fill="#ffd7e4"/></svg>
+        <strong>پیام‌رسان رز</strong>
+      </div>
+      <div class="searchbox">
+        <span class="s-ic" data-ic="search"></span>
+        <input id="q" placeholder="جست‌وجوی کاربر، پیام، فایل…">
+        <button id="qClear" hidden aria-label="پاک کردن">×</button>
+      </div>
+      <nav class="tabs">
+        <button id="tabChats" class="tab on">گفت‌وگوها</button>
+        <button id="tabContacts" class="tab">مخاطبین</button>
+      </nav>
+    </div>
+    <div class="list" id="roomList"></div>
+    <div class="list" id="contactList" hidden></div>
+    <div class="list" id="searchRes" hidden></div>
+    <div class="side-bottom">
+      <button class="chip" id="btnProfile">
+        <span id="chipAv"></span>
+        <span id="chipName" class="chip-name"></span>
+      </button>
+      <button class="iconbtn admin-btn" id="btnAdmin" hidden title="پنل مدیریت" data-ic="shield"></button>
+      <button class="iconbtn" id="btnNewChat" title="گفت‌وگوی خصوصی جدید" data-ic="chat"></button>
+      <button class="iconbtn" id="btnNewGroup" title="ساخت گروه / کانال" data-ic="users"></button>
+      <button class="iconbtn" id="btnLogout" title="خروج" data-ic="logout"></button>
+    </div>
+  </aside>
+
+  <main id="chatPane">
+    <header id="chatHeader" class="empty">
+      <button class="iconbtn" id="chBack" hidden data-ic="arrow" aria-label="بازگشت"></button>
+      <span id="chAv"></span>
+      <div class="ch-text">
+        <strong id="chName">پیام‌رسان رز</strong>
+        <small id="chSub">برای شروع یک گفتگو را انتخاب کنید</small>
+      </div>
+      <span class="flex1"></span>
+      <button class="iconbtn" id="chInfo" hidden data-ic="info" title="اطلاعات و اعضا"></button>
+      <button class="iconbtn" id="chMore" hidden data-ic="dots" title="گزینه‌ها"></button>
+    </header>
+
+    <div id="pinnedBar" hidden></div>
+
+    <div id="welcome">
+      <svg viewBox="0 0 32 32" class="logo" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#f2cbd9"/><path d="M16 7c-4 2-6 5-6 8a6 6 0 0 0 12 0c0-3-2-6-6-8z" fill="#fff"/><path d="M16 21v5M16 24c-2 0-3.5-1-4-2.5M16 24c2 0 3.5-1 4-2.5" stroke="#a63f68" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
+      <h2>به پیام‌رسان رز خوش آمدید</h2>
+      <p>از فهرست کنار، یک گفتگو را باز کنید یا گفت‌وگوی تازه‌ای بسازید.</p>
+      <button class="btn primary" id="welcomeNew">گفت‌وگوی جدید</button>
+    </div>
+
+    <div id="msgs" hidden></div>
+
+    <div id="composerWrap" hidden>
+      <div id="editBar" hidden>
+        <span data-ic="edit"></span><em>ویرایش پیام</em>
+        <button class="iconbtn" id="editCancel" data-ic="x" aria-label="انصراف"></button>
+      </div>
+      <div id="replyBar" hidden>
+        <span data-ic="reply"></span>
+        <div><b id="replyName"></b><small id="replyText"></small></div>
+        <button class="iconbtn" id="replyCancel" data-ic="x" aria-label="لغو پاسخ"></button>
+      </div>
+      <div id="recBar" hidden>
+        <span class="rec-dot"></span><span id="recTime">۰:۰۰</span>
+        <small>در حال ضبط صوت…</small>
+        <span class="flex1"></span>
+        <button class="iconbtn" id="recCancel" data-ic="x" title="لغو ضبط"></button>
+        <button class="iconbtn ok" id="recStop" data-ic="check" title="پایان ضبط"></button>
+      </div>
+      <div id="pendingChips"></div>
+      <form id="composer">
+        <button type="button" class="iconbtn" id="emojiBtn" data-ic="smile" title="ایموجی"></button>
+        <textarea id="body" rows="1" placeholder="پیام خود را بنویسید…"></textarea>
+        <button type="button" class="iconbtn" id="attachBtn" data-ic="clip" title="پیوست فایل"></button>
+        <button type="button" class="iconbtn" id="micBtn" data-ic="mic" title="ضبط پیام صوتی"></button>
+        <button type="submit" class="iconbtn send" id="sendBtn" data-ic="send" title="ارسال"></button>
+        <input type="file" id="fileInput" hidden>
+      </form>
+    </div>
+  </main>
+
+  <aside id="membersPanel" hidden>
+    <header>
+      <strong id="mpTitle">اعضا</strong>
+      <button class="iconbtn" id="mpClose" data-ic="x" aria-label="بستن"></button>
+    </header>
+    <div class="list" id="mpBody"></div>
+    <div class="mp-foot">
+      <button class="btn ghost wide" id="mpAdd" hidden>+ افزودن عضو</button>
+    </div>
+  </aside>
+</div>
+
+<!-- ================= مودال‌ها ================= -->
+<div class="overlay" id="mNewChat" hidden><div class="m-card">
+  <header><strong>گفت‌وگوی خصوصی جدید</strong><button class="iconbtn m-close" data-ic="x"></button></header>
+  <div class="searchbox in-modal"><span class="s-ic" data-ic="search"></span><input id="ncSearch" placeholder="جست‌وجوی مخاطب…"></div>
+  <div class="list pick" id="ncList"></div>
+</div></div>
+
+<div class="overlay" id="mNewGroup" hidden><div class="m-card">
+  <header><strong>ساخت گروه / کانال</strong><button class="iconbtn m-close" data-ic="x"></button></header>
+  <div class="seg" id="ngKind">
+    <button class="on" data-k="group">گروه</button>
+    <button data-k="channel">کانال</button>
+  </div>
+  <label class="field">نام <input id="ngName" maxlength="120" placeholder="مثلاً: هماهنگی واحد آموزش"></label>
+  <div class="searchbox in-modal"><span class="s-ic" data-ic="search"></span><input id="ngSearch" placeholder="جست‌وجوی عضو…"></div>
+  <p class="hint">اعضا را انتخاب کنید (خودتان به‌عنوان مدیر اضافه می‌شوید):</p>
+  <div class="list pick" id="ngList"></div>
+  <button class="btn primary wide" id="ngMake">ایجاد</button>
+</div></div>
+
+<div class="overlay" id="mForward" hidden><div class="m-card">
+  <header><strong>فوروارد پیام به…</strong><button class="iconbtn m-close" data-ic="x"></button></header>
+  <div class="searchbox in-modal"><span class="s-ic" data-ic="search"></span><input id="fwSearch" placeholder="جست‌وجوی گفتگو…"></div>
+  <div class="list pick" id="fwList"></div>
+</div></div>
+
+<div class="overlay" id="mProfile" hidden><div class="m-card">
+  <header><strong>پروفایل من</strong><button class="iconbtn m-close" data-ic="x"></button></header>
+  <div class="pf-top">
+    <span id="pfAvatar"></span>
+    <button class="btn ghost" id="pfAvatarBtn">تغییر تصویر</button>
+    <input type="file" id="pfAvatarInput" accept=".png,.jpg,.jpeg,.webp,.gif" hidden>
+  </div>
+  <label class="field">نام کاربری<input id="pfName" maxlength="60"></label>
+  <button class="btn primary wide" id="pfSave">ذخیره تغییرات</button>
+  <hr>
+  <p class="hint">تغییر رمز عبور:</p>
+  <label class="field">رمز فعلی<input id="pfCur" type="password" autocomplete="current-password"></label>
+  <label class="field">رمز جدید<input id="pfNew" type="password" autocomplete="new-password"></label>
+  <label class="field">تکرار رمز جدید<input id="pfNew2" type="password" autocomplete="new-password"></label>
+  <button class="btn ghost wide" id="pfPassSave">تغییر رمز</button>
+  <label class="checkline"><input type="checkbox" id="pfSound" checked> پخش صدا هنگام پیام جدید</label>
+</div></div>
+
+<div class="overlay" id="mAdmin" hidden><div class="m-card big">
+  <header><strong>پنل مدیریت</strong><button class="iconbtn m-close" data-ic="x"></button></header>
+  <nav class="tabs" id="adTabs">
+    <button class="tab on" data-t="stats">آمار</button>
+    <button class="tab" data-t="users">کاربران</button>
+    <button class="tab" data-t="units">واحدهای سازمانی</button>
+    <button class="tab" data-t="rooms">گروه‌ها و کانال‌ها</button>
+    <button class="tab" data-t="backup">پشتیبان‌گیری</button>
+  </nav>
+  <div id="adBody" class="ad-body"></div>
+</div></div>
+
+<div class="overlay" id="mPick" hidden><div class="m-card">
+  <header><strong id="pkTitle">انتخاب</strong><button class="iconbtn m-close" data-ic="x"></button></header>
+  <div class="list pick" id="pkList"></div>
+  <button class="btn primary wide" id="pkMake">تأیید و افزودن</button>
+</div></div>
+
+<div class="overlay lb" id="lightbox" hidden><img id="lbImg" alt="نمایش تصویر"><button class="iconbtn lb-close" id="lbClose" data-ic="x"></button></div>
+
+<div id="ctxMenu" hidden></div>
+<div id="emojiPop" hidden></div>
+<div id="toast" hidden></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
