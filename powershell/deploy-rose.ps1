@@ -25,6 +25,15 @@ $PythonVer = '3.12.8'
 $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 
+# ---------- رفع خطای «The underlying connection was closed» ----------
+# گیت‌هاب و python.org فقط TLS 1.2 به بالا را می‌پذیرند؛
+# در Windows PowerShell 5.1 روی برخی سرورها TLS 1.2 پیش‌فرض نیست و باید اجبار شود.
+try {
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch {
+  try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+}
+
 function Write-Step($m) { Write-Host ("==> " + $m) -ForegroundColor Magenta }
 function Write-Ok($m)   { Write-Host ("[OK] " + $m) -ForegroundColor Green }
 function Write-Wr($m)   { Write-Host ("[!]  " + $m) -ForegroundColor Yellow }
@@ -40,6 +49,45 @@ if (-not $wp.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   if ($HTTPS) { $a += '-HTTPS' }
   Start-Process powershell -Verb RunAs -ArgumentList $a -Wait
   exit
+}
+
+# ---------- فعال‌سازی دائمی رمزنگاری قوی دات‌نت ----------
+# با این تنظیم، هر PowerShell جدیدی که روی سرور باز شود به‌طور پیش‌فرض TLS 1.2 دارد.
+foreach ($regPath in @('HKLM:\SOFTWARE\Microsoft\.NetFramework\v4.0.30319',
+                       'HKLM:\SOFTWARE\Wow6432Node\Microsoft\.NetFramework\v4.0.30319')) {
+  try {
+    if (-not (Test-Path $regPath)) { New-Item -Path $regPath -Force | Out-Null }
+    New-ItemProperty -Path $regPath -Name 'SchUseStrongCrypto' -Value 1 -PropertyType DWord -Force | Out-Null
+  } catch {}
+}
+
+# ---------- دانلود مقاوم: Invoke-WebRequest → curl.exe → BITS ----------
+function Get-RemoteFile {
+  param([string]$Uri, [string]$OutFile)
+  $lastErr = $null
+  # تلاش ۱: Invoke-WebRequest (با TLS 1.2 اجباری)
+  try {
+    Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -TimeoutSec 600
+    if ((Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
+  } catch { $lastErr = $_ }
+  Write-Wr "روش ۱ ناموفق بود؛ تلاش با curl.exe ..."
+  # تلاش ۲: curl.exe (در ویندوز ۱۰/۱۱ و سرور ۲۰۱۹ به بعد داخلی است)
+  try {
+    $curl = (Get-Command curl.exe -ErrorAction SilentlyContinue).Source
+    if ($curl) {
+      Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
+      & $curl.exe -fsSL --retry 3 --retry-delay 2 -o $OutFile $Uri
+      if ($LASTEXITCODE -eq 0 -and (Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
+    }
+  } catch { $lastErr = $_ }
+  Write-Wr "روش ۲ ناموفق بود؛ تلاش با BITS ..."
+  # تلاش ۳: BITS (از پشته WinHTTP سیستم استفاده می‌کند)
+  try {
+    Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
+    Start-BitsTransfer -Source $Uri -Destination $OutFile -ErrorAction Stop
+    if ((Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
+  } catch { $lastErr = $_ }
+  throw ("دانلود ناموفق بود: {0}`nآخرین خطا: {1}" -f $Uri, $lastErr)
 }
 
 function Find-Python {
@@ -112,7 +160,7 @@ $sysPy = Find-Python
 if (-not $sysPy) {
   Write-Wr "Python یافت نشد؛ نصب خودکار Python $PythonVer ..."
   $inst = Join-Path $env:TEMP ("python-{0}-amd64.exe" -f $PythonVer)
-  Invoke-WebRequest -Uri ("https://www.python.org/ftp/python/{0}/python-{0}-amd64.exe" -f $PythonVer) -OutFile $inst -UseBasicParsing
+  Get-RemoteFile -Uri ("https://www.python.org/ftp/python/{0}/python-{0}-amd64.exe" -f $PythonVer) -OutFile $inst
   $p = Start-Process -FilePath $inst -ArgumentList '/quiet', 'InstallAllUsers=1', 'PrependPath=1', 'Include_test=0', 'Include_launcher=1' -Wait -PassThru
   if ($p.ExitCode -ne 0) { throw "نصب Python ناموفق بود (کد $($p.ExitCode))" }
   $sysPy = Find-Python
@@ -123,7 +171,7 @@ Write-Ok ("Python: " + $sysPy)
 Write-Step "۲/۸ دریافت سورس از گیت‌هاب"
 $tmp   = Join-Path $env:TEMP ('rose-src-' + [guid]::NewGuid().ToString('N'))
 $zip   = Join-Path $env:TEMP 'rosemassge-main.zip'
-Invoke-WebRequest -Uri ("{0}/archive/refs/heads/{1}.zip" -f $RepoUrl, $Branch) -OutFile $zip -UseBasicParsing
+Get-RemoteFile -Uri ("{0}/archive/refs/heads/{1}.zip" -f $RepoUrl, $Branch) -OutFile $zip
 if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
 Expand-Archive -Path $zip -DestinationPath $tmp -Force
 $srcRoot = Get-ChildItem $tmp -Directory | Select-Object -First 1
