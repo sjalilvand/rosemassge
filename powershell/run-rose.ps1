@@ -43,6 +43,12 @@ if (-not (Test-Path "$Root\.env")) {
     Set-Content "$Root\.env" -Encoding UTF8
 }
 
-Write-Host ""
-Write-Host ("پیام‌رسان رز اجرا می‌شود: http://localhost:{0}  (توقف: Ctrl+C)" -f $Port) -ForegroundColor Cyan
-& $vpy (Join-Path $Root 'app.py')
+$env:PORT = [string]$Port
+if ($HTTPS) {
+  $env:TLS_ENABLED = '1'
+  $env:SECURE_COOKIE = '1'
+}
+Write-Host "Rose is starting on port $Port (Ctrl+C to stop)." -ForegroundColor Cyan
+Push-Location $Root
+try { & $vpy (Join-Path $Root 'app.py') }
+finally { Pop-Location }

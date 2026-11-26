@@ -49,12 +49,12 @@ function Get-RemoteFile {
   throw ("دانلود از همه آدرس‌ها ناموفق بود. آخرین خطا: {0}" -f $lastErr)
 }
 
-Write-Host "==> توقف سرویس" -ForegroundColor Magenta
-try { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue } catch {}
-
 Write-Host "==> دریافت نسخه جدید از گیت‌هاب" -ForegroundColor Magenta
 $tmp = Join-Path $env:TEMP ('rose-upd-' + [guid]::NewGuid().ToString('N'))
-$zip = Join-Path $env:TEMP 'rosemassge-update.zip'
+$zip = "$tmp.zip"
+if ($SourceZip -and -not (Test-Path -LiteralPath $SourceZip -PathType Leaf)) {
+  throw "Source archive not found: $SourceZip"
+}
 if ($SourceZip -and (Test-Path $SourceZip)) {
   Copy-Item $SourceZip -Destination $zip -Force
   Write-Host ("به‌روزرسانی آفلاین از فایل: " + $SourceZip) -ForegroundColor Green
@@ -65,19 +65,28 @@ if ($SourceZip -and (Test-Path $SourceZip)) {
     ("https://codeload.github.com/{0}/zip/refs/heads/{1}" -f $repoPath, $Branch)
   ) -OutFile $zip
 }
-Expand-Archive -Path $zip -DestinationPath $tmp -Force
+Expand-Archive -LiteralPath $zip -DestinationPath $tmp -Force
+Remove-Item -LiteralPath $zip -Force
 $src = (Get-ChildItem $tmp -Directory | Select-Object -First 1).FullName
+
+if (-not $src -or -not (Test-Path (Join-Path $src 'static\index.html')) -or
+    -not (Test-Path (Join-Path $src 'app.py'))) {
+  throw "The source archive does not contain a Rose release."
+}
+$py = Join-Path $InstallDir '.venv\Scripts\python.exe'
+if (-not (Test-Path -LiteralPath $py)) { throw "Rose is not installed in $InstallDir." }
+& $py -m pip install -r (Join-Path $src 'requirements.txt') --quiet
+if ($LASTEXITCODE -ne 0) { throw "Could not install Rose dependencies." }
+
+Write-Host "==> توقف سرویس" -ForegroundColor Magenta
+try { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue } catch {}
 
 Write-Host "==> جایگزینی فایل‌های کد (data و .env حفظ می‌شود)" -ForegroundColor Magenta
 foreach ($item in @('app.py', 'requirements.txt', 'static', 'powershell', 'scripts', 'README.md', '.env.example')) {
   $sp = Join-Path $src $item
-  if (Test-Path $sp) { Copy-Item $sp -Destination (Join-Path $InstallDir $item) -Recurse -Force }
+  if (Test-Path $sp) { Copy-Item -LiteralPath $sp -Destination $InstallDir -Recurse -Force }
 }
 Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
-
-Write-Host "==> به‌روزرسانی وابستگی‌ها" -ForegroundColor Magenta
-$py = Join-Path $InstallDir '.venv\Scripts\python.exe'
-& $py -m pip install -r (Join-Path $InstallDir 'requirements.txt') --quiet
 
 Write-Host "==> راه‌اندازی مجدد" -ForegroundColor Magenta
 try { Start-ScheduledTask -TaskName $TaskName } catch { Write-Host "[!] سرویس یافت نشد؛ پس از نصب مجدد اجرا کنید" }

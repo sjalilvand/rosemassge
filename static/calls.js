@@ -75,17 +75,18 @@
     ui.rKind = rm.querySelector('#rKind');
     ui.mute.innerHTML = icon('mic'); ui.cam.innerHTML = icon('videocam');
     ui.hang.innerHTML = icon('phone'); ui.hang.classList.add('hang');
-    rm.querySelector('#rAccept').innerHTML = icon('phone');
+    ui.answer = rm.querySelector('#rAccept');
+    ui.answer.innerHTML = icon('phone');
     rm.querySelector('#rReject').innerHTML = icon('x');
   }
 
   /* ---------- ابزار ---------- */
   const canMedia = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  const beep = window.beep || function () {};
+  const ringBeep = beep;
 
   function ringTone(on) {
     if (C.ringInt) { clearInterval(C.ringInt); C.ringInt = null; }
-    if (on) C.ringInt = setInterval(beep, 900);
+    if (on) C.ringInt = setInterval(ringBeep, 900);
   }
 
   function fmtDur(sec) {
@@ -106,9 +107,25 @@
   }
 
   /* ---------- RTCPeerConnection ---------- */
-  function createPC() {
-    const pc = new RTCPeerConnection(CFG);
-    pc.onicecandidate = e => { if (e.candidate) signal({ t: 'ice', c: e.candidate.toJSON() }); };
+  async function prepareMedia(call) {
+    const relay = await api('calls/ice');
+    const stream = await getMedia(call.kind);
+    if (C.call !== call) {
+      stream.getTracks().forEach(track => track.stop());
+      return false;
+    }
+    C.local = stream;
+    ui.local.srcObject = stream;
+    C.pc = createPC(relay);
+    stream.getTracks().forEach(track => C.pc.addTrack(track, stream));
+    return true;
+  }
+
+  function createPC(relay) {
+    const pc = new RTCPeerConnection({ ...RTC_CFG, iceServers: [...RTC_CFG.iceServers, ...relay] });
+    pc.onicecandidate = e => {
+      if (C.pc === pc && e.candidate) signal({ t: 'ice', c: e.candidate.toJSON() });
+    };
     pc.ontrack = e => {
       C.remote = e.streams[0];
       if (ui.remote) { ui.remote.srcObject = C.remote; ui.remote.classList.remove('connecting'); }
@@ -129,7 +146,7 @@
   async function processSignals(sigs) {
     for (const s of sigs || []) {
       let p; try { p = JSON.parse(s.payload); } catch (_) { continue; }
-      if (C.call && C.call.role === 'callee' && C.call.state === 'ringing') {
+      if (C.call && C.call.role === 'callee' && !C.pc) {
         C.buffered.push(p); continue;               // هنوز پاسخ نداده‌ایم؛ نگه می‌داریم
       }
       if (!C.pc) continue;
@@ -166,16 +183,13 @@
     setStatus('در حال زنگ زدن…');
     ringTone(true);
     try {
-      C.local = await getMedia(C.call.kind);
-      ui.local.srcObject = C.local;
-      C.pc = createPC();
-      C.local.getTracks().forEach(t => C.pc.addTrack(t, C.local));
+      if (!await prepareMedia(C.call)) return;
       const offer = await C.pc.createOffer();
       await C.pc.setLocalDescription(offer);
       await signal({ t: 'sdp', v: 'offer', s: C.pc.localDescription.sdp });
     } catch (e) {
       toast(e && e.name === 'NotAllowedError' ? 'دسترسی به میکروفون/دوربین رد شد' : 'شروع تماس ناموفق بود', true);
-      hangup('missed');
+      hangup();
     }
   }
 
@@ -194,20 +208,21 @@
 
   async function accept() {
     if (!C.call || C.call.state !== 'ringing') return;
+    const call = C.call;
     clearTimeout(C.autoRej);
-    try { await api('calls/' + C.call.cid + '/state', 'POST', { state: 'accept' }); }
+    ui.answer.disabled = true;
+    try { await api('calls/' + call.cid + '/state', 'POST', { state: 'accept' }); }
     catch (e) { toast(e.message, true); cleanup(); return; }
+    finally { ui.answer.disabled = false; }
+    if (C.call !== call) return;
+    call.state = 'active';
     C.ringing = false;
     ringTone(false);
     ui.ring.hidden = true;
     openOverlay();
     try {
-      C.local = await getMedia(C.call.kind);
-      ui.local.srcObject = C.local;
-      C.pc = createPC();
-      C.local.getTracks().forEach(t => C.pc.addTrack(t, C.local));
+      if (!await prepareMedia(C.call)) return;
       setStatus('در حال اتصال…');
-      C.call.state = 'active';
       const buf = C.buffered; C.buffered = [];
       await processSignals(buf.map(p => ({ payload: JSON.stringify(p) })));
     } catch (e) {
@@ -229,7 +244,7 @@
   }
 
   /* ---------- وضعیت‌های هم‌گام‌سازی ---------- */
-  function onSync(call) {
+  async function onSync(call) {
     if (!call) {
       if (C.call && Date.now() > C.guard) ended(callEndedText('ended'));
       else if (C.ringing) cleanup();
@@ -244,9 +259,12 @@
     }
     if (C.call.role === 'callee' && C.call.state === 'ringing' && !C.ringing) showIncoming(C.call);
     if (C.call.state === 'active') onActive();
-    if (['ended', 'rejected', 'missed'].indexOf(C.call.state) >= 0) ended(callEndedText(C.call.state));
-    processSignals(call.signals);
-    C.lastSig = call.last_sig || C.lastSig;
+    try {
+      await processSignals(call.signals);
+      if (C.call?.cid === call.cid) C.lastSig = call.last_sig || C.lastSig;
+    } catch (_) {
+      if (C.call?.cid === call.cid) hangup();
+    }
   }
 
   function callEndedText(st) {
@@ -256,8 +274,7 @@
   function onActive() {
     if (!C.uiOn) return;
     ringTone(false);
-    setStatus('متصل');
-    startTimer();
+    if (C.pc?.connectionState !== 'connected') setStatus('در حال اتصال…');
   }
 
   /* ---------- پایان تماس ---------- */
@@ -335,6 +352,8 @@
       if (t) { t.enabled = !t.enabled; ui.cam.classList.toggle('off', !t.enabled); ui.cam.innerHTML = icon(t.enabled ? 'videocam' : 'camoff'); }
     };
     ui.hang.onclick = () => hangup();
+    ui.answer.onclick = accept;
+    ui.ring.querySelector('#rReject').onclick = reject;
   }
 
   /* ---------- راه‌اندازی ---------- */
@@ -348,5 +367,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 
-  window.RoseCall = { start: start, onSync: onSync, lastSig: function () { return C.lastSig; } };
+  window.RoseCall = { start: start, cleanup: cleanup, onSync: onSync, lastSig: function () { return C.lastSig; } };
 })();

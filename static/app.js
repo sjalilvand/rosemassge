@@ -106,6 +106,7 @@ async function api(url, method = 'GET', data) {
   return j;
 }
 function sessionEnd() {
+  window.RoseCall?.cleanup();
   S.me = null;
   $('#app').hidden = true; $('#login').hidden = false;
 }
@@ -135,6 +136,7 @@ $('#setupForm').addEventListener('submit', async e => {
 
 function enterApp(u) {
   S.me = u;
+  if (!S.cur) $('#sidebar').classList.add('open');
   $('#login').hidden = true; $('#app').hidden = false;
   $('#chipAv').replaceChildren(avEl(u.name, u.avatar, 'sm'));
   $('#chipName').textContent = u.name;
@@ -145,8 +147,13 @@ function enterApp(u) {
 }
 
 /* ================= حلقه‌های هم‌گام‌سازی ================= */
+let syncing = false;
 async function syncTick() {
-  if (!S.me) return;
+  if (!S.me || syncing) return;
+  syncing = true;
+  try { await syncOnce(); } finally { syncing = false; }
+}
+async function syncOnce() {
   const d = await api('sync' + (window.RoseCall ? '?cs=' + RoseCall.lastSig() : ''));
   S.rooms = d.rooms; S.online = new Set(d.online);
   for (const r of d.rooms) {
@@ -158,7 +165,7 @@ async function syncTick() {
     prevLast[r.id] = lid;
   }
   try { const [us, un] = await Promise.all([api('users'), api('units')]); S.users = us; S.units = un; } catch (_) {}
-  if (window.RoseCall) { try { RoseCall.onSync(d.call); } catch (_) {} }
+  if (window.RoseCall) await RoseCall.onSync(d.call);
   renderRooms();
   if (S.tab === 'contacts' && !searching()) renderContacts();
   updateTitle();
@@ -954,6 +961,9 @@ $('#pkMake').onclick = () => {
 $('#btnProfile').onclick = () => openProfile();
 $('#welcomeNew').onclick = () => openNewChat();
 function openNewChat() {
+  $('#ncSearch').value = '';
+  $('#ncPhone').value = '';
+  $('#phoneResult').hidden = true;
   renderNC('');
   openM('mNewChat');
 }
@@ -971,6 +981,26 @@ function renderNC(q) {
     list.append(row);
   }
 }
+$('#phoneLookup').onsubmit = async event => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submit = form.querySelector('button');
+  const result = $('#phoneResult');
+  submit.disabled = true;
+  result.hidden = false;
+  result.textContent = 'در حال جست‌وجو…';
+  try {
+    const user = await api('contacts/phone', 'POST', { phone: $('#ncPhone').value.trim() });
+    const open = el('button', 'btn primary', 'شروع گفتگو با ' + user.name);
+    open.type = 'button';
+    open.onclick = () => { closeM('mNewChat'); privateRoom(user.id); };
+    result.replaceChildren(open);
+  } catch (err) {
+    result.textContent = err.message;
+  } finally {
+    submit.disabled = false;
+  }
+};
 $('#ncSearch').addEventListener('input', e => renderNC(e.target.value.trim()));
 
 /* ---------- ساخت گروه/کانال ---------- */
@@ -1156,6 +1186,7 @@ async function adUsers(body) {
   const form = el('div', 'ad-form');
   const lbl = (txt, node) => { const l = el('label'); l.append(el('span', null, txt), node); return l; };
   const fN = document.createElement('input'); fN.placeholder = 'نام کاربری';
+  const fPhone = document.createElement('input'); fPhone.type = 'tel'; fPhone.dir = 'ltr';
   const fP = document.createElement('input'); fP.type = 'password'; fP.placeholder = 'رمز اولیه';
   const fU = document.createElement('select');
   fU.append(new Option('بدون واحد', ''));
@@ -1164,12 +1195,12 @@ async function adUsers(body) {
   const btn = el('button', 'btn primary', 'ایجاد کاربر');
   btn.onclick = async () => {
     try {
-      await api('users', 'POST', { name: fN.value.trim(), password: fP.value, unit: fU.value ? Number(fU.value) : null, is_admin: fA.checked });
+      await api('users', 'POST', { name: fN.value.trim(), password: fP.value, phone: fPhone.value.trim(), unit: fU.value ? Number(fU.value) : null, is_admin: fA.checked });
       toast('کاربر ساخته شد');
       renderAd();
     } catch (e) { toast(e.message, true); }
   };
-  form.append(lbl('نام کاربری', fN), lbl('رمز اولیه', fP), lbl('واحد سازمانی', fU), lbl('مدیر', fA), btn);
+  form.append(lbl('نام کاربری', fN), lbl('رمز اولیه', fP), lbl('شماره موبایل', fPhone), lbl('واحد سازمانی', fU), lbl('مدیر', fA), btn);
   body.append(form);
   const t = el('table', 'ad-t');
   const thead = el('thead');
@@ -1216,6 +1247,20 @@ async function adUsers(body) {
       catch (e) { toast(e.message, true); }
     };
     acts.append(rp);
+    const phone = el('button', 'iconbtn');
+    phone.innerHTML = icon('phone');
+    phone.title = 'ویرایش شماره موبایل';
+    phone.setAttribute('aria-label', phone.title);
+    phone.onclick = async () => {
+      const value = prompt('شماره موبایل (خالی برای حذف)', u.phone || '');
+      if (value === null) return;
+      try {
+        await api('users/' + u.id, 'PUT', { phone: value.trim() });
+        toast('شماره ثبت شد');
+        renderAd();
+      } catch (err) { toast(err.message, true); }
+    };
+    acts.append(phone);
     const db = el('button', 'iconbtn danger');
     db.innerHTML = icon('trash'); db.title = 'حذف کاربر';
     db.onclick = async () => {
@@ -1338,6 +1383,14 @@ setInterval(() => { roomTick().catch(() => {}); }, 1300);
 (async function boot() {
   try {
     const h = await fetch('/api/health').then(r => r.json());
+    if (h.tekno_url && !h.fresh) {
+      const loginLink = $('#teknoLogin');
+      loginLink.href = h.tekno_url;
+      loginLink.hidden = false;
+      const homeLink = $('#teknoHome');
+      homeLink.href = new URL(h.tekno_url).origin;
+      homeLink.hidden = false;
+    }
     if (h.fresh) { $('#loginForm').hidden = true; $('#setupForm').hidden = false; }
   } catch (_) {}
   try {

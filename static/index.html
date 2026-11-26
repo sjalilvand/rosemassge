@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#7c2852">
+<link rel="manifest" href="/static/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/rose-192.png">
 <title>پیام‌رسان رز | Rose Messenger</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23a63f68'/%3E%3Cpath d='M16 7c-4 2-6 5-6 8a6 6 0 0 0 12 0c0-3-2-6-6-8z' fill='%23ffd7e4'/%3E%3Cpath d='M16 21v5M16 24c-2 0-3.5-1-4-2.5M16 24c2 0 3.5-1 4-2.5' stroke='%23ffe9f0' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/app.css">
@@ -31,6 +34,7 @@
       <p id="lxErr" class="err"></p>
     </form>
 
+    <a id="teknoLogin" class="btn ghost wide app-link" hidden>ورود با حساب تِکنو</a>
     <form id="setupForm" hidden autocomplete="off">
       <p class="hint">اولین اجرای سامانه است. یک حساب «مدیر» بسازید:</p>
       <label>نام کاربری مدیر<input id="sxUser" required></label>
@@ -53,6 +57,7 @@
       <div class="side-brand">
         <svg viewBox="0 0 32 32" class="logo sm" aria-hidden="true"><circle cx="16" cy="16" r="15" fill="#a63f68"/><path d="M16 7c-4 2-6 5-6 8a6 6 0 0 0 12 0c0-3-2-6-6-8z" fill="#ffd7e4"/></svg>
         <strong>پیام‌رسان رز</strong>
+        <a id="teknoHome" class="text-link" hidden>تِکنو ↗</a>
       </div>
       <div class="searchbox">
         <span class="s-ic" data-ic="search"></span>
@@ -150,6 +155,14 @@
 <div class="overlay" id="mNewChat" hidden><div class="m-card">
   <header><strong>گفت‌وگوی خصوصی جدید</strong><button class="iconbtn m-close" data-ic="x"></button></header>
   <div class="searchbox in-modal"><span class="s-ic" data-ic="search"></span><input id="ncSearch" placeholder="جست‌وجوی مخاطب…"></div>
+  <form id="phoneLookup" class="phone-lookup">
+    <label for="ncPhone">یافتن مخاطب با شماره موبایل</label>
+    <div>
+      <input id="ncPhone" type="tel" dir="ltr" maxlength="48" placeholder="09123456789" required>
+      <button class="btn ghost" type="submit">جست‌وجو</button>
+    </div>
+    <p id="phoneResult" class="hint" aria-live="polite" hidden></p>
+  </form>
   <div class="list pick" id="ncList"></div>
 </div></div>
 
@@ -216,5 +229,6 @@
 
 <script src="/static/app.js"></script>
 <script src="/static/calls.js"></script>
+<script src="/static/mobile.js" defer></script>
 </body>
 </html>

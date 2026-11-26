@@ -7,10 +7,14 @@
 جست‌وجو، اعلان و شمارنده نخوانده، ساختار سازمانی (واحد ستادی/مرکز استانی)،
 پنل مدیریت، پشتیبان‌گیری و HTTPS اختیاری.
 """
+import base64
+import hashlib
+import hmac
 import io
 import json
 import mimetypes
 import os
+import re
 import secrets
 import shutil
 import sqlite3
@@ -18,7 +22,7 @@ import time
 import zipfile
 from datetime import timedelta
 
-from flask import (Flask, abort, jsonify, request, send_file,
+from flask import (Flask, abort, jsonify, redirect, request, send_file,
                    send_from_directory, session)
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -26,7 +30,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 def load_env(path='.env'):
     """بارگذاری ساده فایل .env بدون وابستگی خارجی"""
     if os.path.exists(path):
-        with open(path, encoding='utf-8') as fh:
+        with open(path, encoding='utf-8-sig') as fh:
             for line in fh:
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
@@ -39,9 +43,16 @@ DATA = os.getenv('DATA_DIR', 'data')
 UPLOADS = os.path.join(DATA, 'uploads')
 os.makedirs(UPLOADS, exist_ok=True)
 PORT = int(os.getenv('PORT', '8088'))
+BIND_HOST = os.getenv('BIND_HOST', '0.0.0.0')
 MIN_PASSWORD = int(os.getenv('MIN_PASSWORD', '12'))
 ADMIN_USER = os.getenv('ADMIN_USER', 'admin')
 TLS_ENABLED = os.getenv('TLS_ENABLED', '0') == '1'
+ROSE_PUBLIC_URL = os.getenv('ROSE_PUBLIC_URL', '').rstrip('/')
+TEKNO_URL = os.getenv('TEKNO_URL', '').rstrip('/')
+TEKNO_SECRET = os.getenv('TEKNO_SSO_SECRET', '').encode()
+TEKNO_ENABLED = (len(TEKNO_SECRET) >= 32 and
+                 all(re.fullmatch(r'https://[A-Za-z0-9.-]+(?::[0-9]+)?', url)
+                     for url in (TEKNO_URL, ROSE_PUBLIC_URL)))
 ONLINE_WINDOW = 70   # ثانیه؛ کاربر با فعالیت اختر در این بازه «آنلاین» است
 TYPING_WINDOW = 6    # اعتبار وضعیت «در حال نوشتن» بر حسب ثانیه
 
@@ -52,7 +63,7 @@ app.config.update(
     MAX_CONTENT_LENGTH=100 * 1024 * 1024,  # سقف هر فایل: ۱۰۰ مگابایت
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Strict',
-    SESSION_COOKIE_SECURE=TLS_ENABLED or os.getenv('SECURE_COOKIE', '0') == '1',
+    SESSION_COOKIE_SECURE=TEKNO_ENABLED or TLS_ENABLED or os.getenv('SECURE_COOKIE', '0') == '1',
 )
 
 INLINE_TYPES = {
@@ -79,6 +90,19 @@ CREATE TABLE IF NOT EXISTS users(
   active   INTEGER DEFAULT 1,
   last_seen REAL DEFAULT 0,
   created  REAL
+);
+CREATE TABLE IF NOT EXISTS tekno_accounts(
+  subject TEXT PRIMARY KEY,
+  user INTEGER UNIQUE REFERENCES users(id) ON DELETE SET NULL
+);
+CREATE TABLE IF NOT EXISTS tekno_tickets(
+  nonce TEXT PRIMARY KEY,
+  expires INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS phone_lookup_limits(
+  user INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  minute INTEGER NOT NULL,
+  attempts INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS rooms(
   id      INTEGER PRIMARY KEY,
@@ -154,6 +178,8 @@ def init_db():
         addcol('users', 'active', 'INTEGER DEFAULT 1')
         addcol('users', 'last_seen', 'REAL DEFAULT 0')
         addcol('users', 'created', 'REAL')
+        addcol('users', 'phone', 'TEXT')
+        c.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone ON users(phone)')
         addcol('rooms', 'created', 'REAL')
         addcol('members', 'role', "TEXT DEFAULT 'member'")
         addcol('members', 'last_read', 'INTEGER DEFAULT 0')
@@ -164,18 +190,31 @@ def init_db():
         addcol('messages', 'pinned', 'INTEGER DEFAULT 0')
         addcol('messages', 'edited', 'INTEGER DEFAULT 0')
         if os.getenv('ADMIN_PASSWORD'):
+            c.execute('BEGIN IMMEDIATE')
+            if c.execute('SELECT 1 FROM users LIMIT 1').fetchone():
+                return
             c.execute(
                 'INSERT OR IGNORE INTO users(name,password,is_admin,active,created) VALUES (?,?,1,1,?)',
                 (ADMIN_USER, generate_password_hash(os.environ['ADMIN_PASSWORD']), time.time()))
-            c.execute('UPDATE users SET is_admin=1, active=1 WHERE name=?', (ADMIN_USER,))
 
 init_db()
 
 # ---------------------------------------------------------------- ابزارها
 def uid():
-    if not session.get('uid'):
+    user_id = session.get('uid')
+    if not user_id:
         abort(401)
-    return session['uid']
+    with db() as c:
+        user = get_user(c, user_id)
+        valid = user and user['active'] and session.get('created', user['created']) == user['created']
+        if 'tekno' in session:
+            valid = valid and TEKNO_ENABLED and session['until'] > time.time() and c.execute(
+                'SELECT 1 FROM tekno_accounts WHERE subject=? AND user=?',
+                (session['tekno'], user_id)).fetchone()
+    if not valid:
+        session.clear()
+        abort(401)
+    return user_id
 
 def get_user(c, i):
     return c.execute('SELECT * FROM users WHERE id=?', (i,)).fetchone()
@@ -317,7 +356,7 @@ def guard():
     if request.path.startswith('/api/'):
         if request.method in ('POST', 'PUT', 'DELETE', 'PATCH') and \
                 request.path not in ('/api/login', '/api/setup'):
-            if request.headers.get('X-CSRF') != session.get('csrf'):
+            if not session.get('csrf') or request.headers.get('X-CSRF') != session['csrf']:
                 abort(403)
         if session.get('uid'):
             now = time.time()
@@ -347,11 +386,71 @@ def _413(e):
 def home():
     return send_from_directory('static', 'index.html', max_age=0)
 
+@app.get('/rose-sw.js')
+def service_worker():
+    return send_from_directory('static', 'rose-sw.js', max_age=0)
+
 @app.get('/api/health')
 def health():
     with db() as c:
         n = c.execute('SELECT COUNT(*) n FROM users').fetchone()['n']
-    return jsonify(ok=True, fresh=(n == 0), version='2.0')
+    return jsonify(ok=True, fresh=(n == 0), version='2.1',
+                   tekno_url=TEKNO_URL + '/api/rose' if TEKNO_ENABLED else None)
+
+@app.post('/auth/tekno')
+def tekno_login():
+    if not TEKNO_ENABLED:
+        abort(404)
+    if request.headers.get('Origin') != TEKNO_URL:
+        abort(403)
+    ticket = request.form.get('ticket', '')
+    if len(ticket) > 2048 or not re.fullmatch(r'[A-Za-z0-9_-]+\.[a-f0-9]{64}', ticket):
+        abort(400)
+    body, sig = ticket.split('.')
+    expected = hmac.new(TEKNO_SECRET, body.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        abort(403)
+    try:
+        claims = json.loads(base64.urlsafe_b64decode(body + '=' * (-len(body) % 4)))
+        subject = claims['sub']
+        nonce = claims['nonce']
+        expires = claims['exp']
+        name = claims['name'].strip()[:70] or 'کاربر'
+        now = int(time.time())
+        if (claims['iss'] != TEKNO_URL or claims['aud'] != ROSE_PUBLIC_URL
+                or type(expires) is not int or not now < expires <= now + 60
+                or not re.fullmatch(r'[1-9][0-9]{0,10}:[0-9]{1,16}', subject)
+                or not re.fullmatch(r'[a-f0-9]{32}', nonce)):
+            abort(403)
+    except (ValueError, KeyError, TypeError, AttributeError):
+        abort(400)
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        if not c.execute('SELECT 1 FROM users WHERE is_admin=1 AND active=1').fetchone():
+            abort(403)
+        c.execute('DELETE FROM tekno_tickets WHERE expires<=?', (now,))
+        if not c.execute('INSERT OR IGNORE INTO tekno_tickets VALUES (?,?)', (nonce, expires)).rowcount:
+            abort(403)
+        link = c.execute('SELECT user FROM tekno_accounts WHERE subject=?', (subject,)).fetchone()
+        if link is None:
+            alias = f'{name} · تِکنو {subject.split(":")[0]}'
+            while c.execute('SELECT 1 FROM users WHERE name=?', (alias,)).fetchone():
+                alias = f'{name} · تِکنو {secrets.token_hex(5)}'
+            user_id = c.execute(
+                'INSERT INTO users(name,password,active,created,last_seen) VALUES (?, ?, 1, ?, ?)',
+                (alias, '', time.time(), now)).lastrowid
+            c.execute('INSERT INTO tekno_accounts VALUES (?,?)', (subject, user_id))
+        else:
+            user_id = link['user']
+        user = get_user(c, user_id)
+        if not user or not user['active']:
+            abort(403)
+    session.clear()
+    session.update(uid=user_id, csrf=secrets.token_hex(24), created=user['created'],
+                   hb=now, tekno=subject, until=now + 8 * 3600)
+    response = redirect('/', code=303)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 # ---------------------------------------------------------------- ورود و خروج
 def _fail(ip):
@@ -369,13 +468,13 @@ def login():
     name = (d.get('name') or '').strip()
     with db() as c:
         u = c.execute('SELECT * FROM users WHERE name=?', (name,)).fetchone()
-    if not u or not u['active'] or not check_password_hash(u['password'], d.get('password') or ''):
+    if not u or not u['active'] or not u['password'] or not check_password_hash(u['password'], d.get('password') or ''):
         FAILS.setdefault(ip, []).append(time.time())
         abort(401)
     FAILS.pop(ip, None)
     session.clear()
     session.permanent = True
-    session.update(uid=u['id'], csrf=secrets.token_hex(24), hb=time.time())
+    session.update(uid=u['id'], csrf=secrets.token_hex(24), hb=time.time(), created=u['created'])
     with db() as c:
         c.execute('UPDATE users SET last_seen=? WHERE id=?', (time.time(), u['id']))
     return jsonify(id=u['id'], name=u['name'], csrf=session['csrf'],
@@ -385,6 +484,7 @@ def login():
 def setup():
     """فقط در اولین اجرا (وقتی هیچ کاربری نیست) حساب مدیر می‌سازد"""
     with db() as c:
+        c.execute('BEGIN IMMEDIATE')
         if c.execute('SELECT COUNT(*) n FROM users').fetchone()['n']:
             abort(403)
         d = request.get_json(silent=True) or {}
@@ -429,6 +529,8 @@ def update_me():
             return jsonerr(409, 'این نام کاربری قبلاً گرفته شده')
         pw_hash = row['password']
         if request.form.get('new_password'):
+            if not row['password']:
+                return jsonerr(403, 'رمز این حساب در تِکنو مدیریت می‌شود')
             if not check_password_hash(row['password'], request.form.get('current_password') or ''):
                 return jsonerr(403, 'رمز فعلی نادرست است')
             if len(request.form['new_password']) < MIN_PASSWORD:
@@ -452,12 +554,52 @@ def update_me():
                   (name, pw_hash, avatar, u))
     return jsonify(ok=True)
 
+def normalize_phone(raw):
+    if raw is None or raw == '':
+        return None
+    if not isinstance(raw, str) or len(raw) > 48:
+        raise ValueError('شماره موبایل معتبر نیست')
+    number = re.sub(r'[\s()-]', '', raw.translate(str.maketrans(
+        '۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩', '01234567890123456789')))
+    if re.fullmatch(r'09[0-9]{9}', number):
+        number = '+98' + number[1:]
+    elif number.startswith('00'):
+        number = '+' + number[2:]
+    if not re.fullmatch(r'\+[1-9][0-9]{7,14}', number):
+        raise ValueError('شماره را با ۰۹ یا کد کشور وارد کنید')
+    return number
+
+
+@app.post('/api/contacts/phone')
+def contact_by_phone():
+    u = uid()
+    payload = request.get_json(silent=True)
+    try:
+        phone = normalize_phone(payload.get('phone') if isinstance(payload, dict) else None)
+        if not phone:
+            raise ValueError('شماره موبایل را وارد کنید')
+    except ValueError as exc:
+        return jsonerr(400, str(exc))
+    with db() as c:
+        minute = int(time.time()) // 60
+        attempts = c.execute(
+            'INSERT INTO phone_lookup_limits VALUES (?, ?, 1) '
+            'ON CONFLICT(user) DO UPDATE SET '
+            'attempts=CASE WHEN minute=excluded.minute THEN min(attempts+1, 21) ELSE 1 END, '
+            'minute=excluded.minute RETURNING attempts', (u, minute)).fetchone()[0]
+        if attempts > 20:
+            return jsonerr(429, 'لطفاً یک دقیقه دیگر دوباره تلاش کنید')
+        row = c.execute('SELECT * FROM users WHERE phone=? AND active=1 AND id<>?', (phone, u)).fetchone()
+    return jsonify(user_public(row)) if row else jsonerr(404, 'مخاطبی با این شماره یافت نشد')
+
+
 # ---------------------------------------------------------------- کاربران
 @app.route('/api/users', methods=['GET', 'POST'])
 def users():
     u = uid()
     with db() as c:
         if request.method == 'POST':
+            c.execute('BEGIN IMMEDIATE')
             if not is_admin(c, u):
                 abort(403)
             d = request.get_json(silent=True) or {}
@@ -473,17 +615,27 @@ def users():
                     abort(400)
             else:
                 unit = None
-            c.execute('INSERT INTO users(name,password,is_admin,unit,active,created) VALUES (?,?,?,?,1,?)',
-                      (name, generate_password_hash(pw), 1 if d.get('is_admin') else 0, unit, time.time()))
+            try:
+                phone = normalize_phone(d.get('phone'))
+            except ValueError as exc:
+                return jsonerr(400, str(exc))
+            if phone and c.execute('SELECT 1 FROM users WHERE phone=?', (phone,)).fetchone():
+                return jsonerr(409, 'این شماره قبلاً ثبت شده')
+            c.execute('INSERT INTO users(name,password,is_admin,unit,active,created,phone) VALUES (?,?,?,?,1,?,?)',
+                      (name, generate_password_hash(pw), 1 if d.get('is_admin') else 0,
+                       unit, time.time(), phone))
         rows = c.execute(
             'SELECT users.*, units.name uname FROM users '
             'LEFT JOIN units ON units.id=users.unit ORDER BY users.active DESC, users.name').fetchall()
-    return jsonify([dict(user_public(r), unit_name=r['uname']) for r in rows])
+        admin = is_admin(c, u)
+    return jsonify([dict(user_public(r), unit_name=r['uname'],
+                         **({'phone': r['phone']} if admin else {})) for r in rows])
 
 @app.put('/api/users/<int:target>')
 def edit_user(target):
     admin = uid()
     with db() as c:
+        c.execute('BEGIN IMMEDIATE')
         if not is_admin(c, admin):
             abort(403)
         row = get_user(c, target)
@@ -506,8 +658,14 @@ def edit_user(target):
         active = int(d['active']) if 'active' in d else row['active']
         if target == admin and (not active or not isadm):
             return jsonerr(400, 'نمی‌توانید دسترسی خودتان را کم کنید')
-        c.execute('UPDATE users SET password=?, unit=?, is_admin=?, active=? WHERE id=?',
-                  (pw_hash, unit, isadm, active, target))
+        try:
+            phone = normalize_phone(d.get('phone', row['phone']))
+        except ValueError as exc:
+            return jsonerr(400, str(exc))
+        if phone and c.execute('SELECT 1 FROM users WHERE phone=? AND id<>?', (phone, target)).fetchone():
+            return jsonerr(409, 'این شماره قبلاً ثبت شده')
+        c.execute('UPDATE users SET password=?, unit=?, is_admin=?, active=?, phone=? WHERE id=?',
+                  (pw_hash, unit, isadm, active, phone, target))
     return jsonify(ok=True)
 
 @app.delete('/api/users/<int:target>')
@@ -596,7 +754,10 @@ def rooms():
                 if not c.execute('SELECT 1 FROM users WHERE id=? AND active=1', (i,)).fetchone():
                     return jsonerr(400, 'یکی از کاربران موجود نیست')
             if kind == 'private':
+                c.execute('BEGIN IMMEDIATE')
                 peer = ids[0]
+                if not c.execute('SELECT 1 FROM users WHERE id=? AND active=1', (peer,)).fetchone():
+                    abort(404)
                 if peer == u:
                     abort(400)
                 exist = c.execute(
@@ -903,6 +1064,11 @@ def housekeep_calls(c):
     now = time.time()
     c.execute("UPDATE calls SET state='missed', ended=? WHERE state='ringing' AND ts<?",
               (now, now - 60))
+    c.execute(
+        "UPDATE calls SET state='ended', ended=? WHERE state='active' AND "
+        "(ts<? OR NOT EXISTS(SELECT 1 FROM users WHERE id=caller AND active=1 AND last_seen>?) "
+        "OR NOT EXISTS(SELECT 1 FROM users WHERE id=callee AND active=1 AND last_seen>?))",
+        (now, now - 14400, now - 120, now - 120))
     c.execute('DELETE FROM call_signals WHERE ts< ?', (now - 300,))
     c.execute('DELETE FROM calls WHERE state NOT IN (?,?) AND ended< ?', (*CALL_ACTIVE, now - 3600))
 
@@ -916,8 +1082,8 @@ def call_peer(c, row, u):
 def call_payload(c, u, since_sig):
     """تماس جاری کاربر + سیگنال‌های جدید WebRTC برای هم‌گام‌سازی"""
     row = c.execute(
-        'SELECT * FROM calls WHERE (caller=? OR callee=?) AND state IN (?,?) AND ts>? '
-        'ORDER BY id DESC LIMIT 1', (u, u, *CALL_ACTIVE, time.time() - 180)).fetchone()
+        'SELECT * FROM calls WHERE (caller=? OR callee=?) AND state IN (?,?) '
+        'ORDER BY id DESC LIMIT 1', (u, u, *CALL_ACTIVE)).fetchone()
     if not row:
         return None
     sigs = c.execute('SELECT id, payload FROM call_signals WHERE to_u=? AND cid=? AND id>? ORDER BY id',
@@ -929,9 +1095,23 @@ def call_payload(c, u, since_sig):
         'state': row['state'],
         'peer': call_peer(c, row, u),
         'signals': [dict(id=r['id'], payload=r['payload']) for r in sigs],
-        'last_sig': c.execute('SELECT COALESCE(MAX(id),0) AS m FROM call_signals WHERE cid=?',
-                              (row['id'],)).fetchone()['m'],
+        'last_sig': sigs[-1]['id'] if sigs else since_sig,
     }
+
+
+@app.get('/api/calls/ice')
+def call_ice():
+    u = uid()
+    secret = os.getenv('TURN_SECRET', '')
+    urls = [url.strip() for url in os.getenv('TURN_URLS', '').split(',') if url.strip()]
+    servers = []
+    if secret and urls:
+        username = f'{int(time.time()) + 14460}:rose-{u}'
+        credential = base64.b64encode(hmac.digest(secret.encode(), username.encode(), 'sha1')).decode()
+        servers.append(dict(urls=urls, username=username, credential=credential))
+    response = jsonify(servers)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 @app.post('/api/calls')
@@ -939,6 +1119,8 @@ def call_start():
     u = uid()
     d = request.get_json(silent=True) or {}
     peer = d.get('peer')
+    if type(peer) is not int:
+        abort(400)
     kind = d.get('kind') if d.get('kind') in ('audio', 'video') else 'audio'
     with db() as c:
         housekeep_calls(c)
@@ -963,9 +1145,13 @@ def call_signal(cid):
     u = uid()
     d = request.get_json(silent=True) or {}
     payload = d.get('payload')
-    if payload is None:
-        return jsonerr(400, 'payload لازم است')
+    if not isinstance(payload, dict) or payload.get('t') not in ('ice', 'sdp'):
+        return jsonerr(400, 'سیگنال معتبر نیست')
+    encoded = json.dumps(payload)
+    if len(encoded) > 65536:
+        abort(413)
     with db() as c:
+        c.execute('BEGIN IMMEDIATE')
         row = c.execute('SELECT * FROM calls WHERE id=?', (cid,)).fetchone()
         if not row or u not in (row['caller'], row['callee']):
             abort(403)
@@ -973,7 +1159,7 @@ def call_signal(cid):
             return jsonerr(400, 'تماس فعال نیست')
         other = row['callee'] if row['caller'] == u else row['caller']
         c.execute('INSERT INTO call_signals(cid,from_u,to_u,payload,ts) VALUES (?,?,?,?,?)',
-                  (cid, u, other, json.dumps(payload)[:32768], time.time()))
+                  (cid, u, other, encoded, time.time()))
     return jsonify(ok=1)
 
 
@@ -985,6 +1171,7 @@ def call_state(cid):
     if st not in CALL_STATES:
         return jsonerr(400, 'state نامعتبر است')
     with db() as c:
+        housekeep_calls(c)
         row = c.execute('SELECT * FROM calls WHERE id=?', (cid,)).fetchone()
         if not row or u not in (row['caller'], row['callee']):
             abort(403)
@@ -1205,12 +1392,11 @@ if __name__ == '__main__':
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
-    init_db()
     if TLS_ENABLED:
         cpath, kpath = ensure_tls_cert()
-        print(f'* Rose Messenger | HTTPS روی پورت {PORT} — https://0.0.0.0:{PORT}')
-        app.run(host='0.0.0.0', port=PORT, ssl_context=(cpath, kpath), threaded=True)
+        print(f'* Rose Messenger | HTTPS روی پورت {PORT} — https://{BIND_HOST}:{PORT}')
+        app.run(host=BIND_HOST, port=PORT, ssl_context=(cpath, kpath), threaded=True)
     else:
         from waitress import serve
-        print(f'* Rose Messenger | HTTP روی پورت {PORT} — http://0.0.0.0:{PORT}')
-        serve(app, host='0.0.0.0', port=PORT, threads=8)
+        print(f'* Rose Messenger | HTTP روی پورت {PORT} — http://{BIND_HOST}:{PORT}')
+        serve(app, host=BIND_HOST, port=PORT, threads=8)

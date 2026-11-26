@@ -368,3 +368,32 @@ table.ad-t select{padding:5px 8px;border:1px solid var(--line);border-radius:8px
 .ring-kind{color:var(--mut);font-size:13px}
 .ring-btns{display:flex;gap:18px;margin-top:14px}
 @keyframes ringpulse{0%,100%{box-shadow:var(--shadow)}50%{box-shadow:0 0 0 6px rgba(166,63,104,.12),0 8px 30px rgba(111,35,64,.22)}}
+
+:root {
+  --rose:#7c2852; --rose-d:#6a2145; --rose-x:#461c33;
+  --rose-l:#f2dce7; --rose-xl:#fbf3f7; --mine:#f4ddea;
+  --line:#eadbe4; --txt:#302232; --mut:#694f62;
+}
+:focus-visible{outline:2px solid var(--rose);outline-offset:3px}
+.app-link{display:block;text-align:center;text-decoration:none}
+.text-link{margin-inline-start:auto;color:var(--rose);font-size:.82rem;text-underline-offset:.22em}
+#login{background:radial-gradient(ellipse at 12% 12%,#e9d2f2,transparent 55%),radial-gradient(ellipse at 85% 90%,#f2c8dc,transparent 64%),var(--rose-xl)}
+.login-card{border-radius:28px;box-shadow:0 20px 54px #461c3320}
+.side-top{padding:20px 16px 12px}
+.side-brand{margin-bottom:18px}
+#roomList,#contactList,#searchRes{padding:8px}
+.side-bottom{gap:4px}
+.phone-lookup{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:14px}
+.phone-lookup label{display:block;font-size:.86rem;font-weight:700;margin-bottom:6px}
+.phone-lookup div{display:flex;gap:7px}
+.phone-lookup input{flex:1;min-width:0;padding:8px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.phone-lookup p{margin-top:8px}
+@media(max-width:820px){
+  .side-top,#chatHeader{padding-top:max(12px,env(safe-area-inset-top))}
+  .side-bottom,#composerWrap{padding-bottom:max(10px,env(safe-area-inset-bottom))}
+  .iconbtn{width:44px;height:44px}
+  input,textarea,select,.searchbox input{font-size:16px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;transition:none!important}
+}
