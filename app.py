@@ -8,6 +8,7 @@
 پنل مدیریت، پشتیبان‌گیری و HTTPS اختیاری.
 """
 import io
+import json
 import mimetypes
 import os
 import secrets
@@ -109,6 +110,25 @@ CREATE TABLE IF NOT EXISTS messages(
   created  REAL
 );
 CREATE INDEX IF NOT EXISTS idx_msg_room ON messages(room, id);
+CREATE TABLE IF NOT EXISTS calls(
+  id       INTEGER PRIMARY KEY,
+  caller   INTEGER NOT NULL,
+  callee   INTEGER NOT NULL,
+  kind     TEXT NOT NULL DEFAULT 'audio',   -- audio / video
+  state    TEXT NOT NULL DEFAULT 'ringing', -- ringing / active / ended / rejected / missed
+  ts       REAL,
+  answered REAL,
+  ended    REAL
+);
+CREATE TABLE IF NOT EXISTS call_signals(
+  id      INTEGER PRIMARY KEY,
+  cid     INTEGER NOT NULL,
+  from_u  INTEGER NOT NULL,
+  to_u    INTEGER NOT NULL,
+  payload TEXT,
+  ts      REAL
+);
+CREATE INDEX IF NOT EXISTS idx_csig_to ON call_signals(to_u, id);
 '''
 
 def db():
@@ -874,13 +894,128 @@ def forward_msg(mid):
     return jsonify(ok=True)
 
 # ---------------------------------------------------------------- هم‌گام‌سازی و جست‌وجو
+# ---------------------------------------------------------------- تماس صوتی و تصویری (WebRTC)
+CALL_ACTIVE = ('ringing', 'active')
+CALL_STATES = ('accept', 'reject', 'end', 'missed')
+
+
+def housekeep_calls(c):
+    now = time.time()
+    c.execute("UPDATE calls SET state='missed', ended=? WHERE state='ringing' AND ts<?",
+              (now, now - 60))
+    c.execute('DELETE FROM call_signals WHERE ts< ?', (now - 300,))
+    c.execute('DELETE FROM calls WHERE state NOT IN (?,?) AND ended< ?', (*CALL_ACTIVE, now - 3600))
+
+
+def call_peer(c, row, u):
+    pid = row['callee'] if row['caller'] == u else row['caller']
+    pr = get_user(c, pid)
+    return user_public(pr) if pr else None
+
+
+def call_payload(c, u, since_sig):
+    """تماس جاری کاربر + سیگنال‌های جدید WebRTC برای هم‌گام‌سازی"""
+    row = c.execute(
+        'SELECT * FROM calls WHERE (caller=? OR callee=?) AND state IN (?,?) AND ts>? '
+        'ORDER BY id DESC LIMIT 1', (u, u, *CALL_ACTIVE, time.time() - 180)).fetchone()
+    if not row:
+        return None
+    sigs = c.execute('SELECT id, payload FROM call_signals WHERE to_u=? AND cid=? AND id>? ORDER BY id',
+                     (u, row['id'], since_sig)).fetchall()
+    return {
+        'cid': row['id'],
+        'role': 'caller' if row['caller'] == u else 'callee',
+        'kind': row['kind'],
+        'state': row['state'],
+        'peer': call_peer(c, row, u),
+        'signals': [dict(id=r['id'], payload=r['payload']) for r in sigs],
+        'last_sig': c.execute('SELECT COALESCE(MAX(id),0) AS m FROM call_signals WHERE cid=?',
+                              (row['id'],)).fetchone()['m'],
+    }
+
+
+@app.post('/api/calls')
+def call_start():
+    u = uid()
+    d = request.get_json(silent=True) or {}
+    peer = d.get('peer')
+    kind = d.get('kind') if d.get('kind') in ('audio', 'video') else 'audio'
+    with db() as c:
+        housekeep_calls(c)
+        pr = get_user(c, peer)
+        if not pr or not pr['active']:
+            abort(404)
+        if peer == u:
+            return jsonerr(400, 'تماس با خودتان ممکن نیست')
+        busy = c.execute(
+            'SELECT 1 FROM calls WHERE state IN (?,?) AND (caller=? OR callee=? OR caller=? OR callee=?)',
+            (*CALL_ACTIVE, u, u, peer, peer)).fetchone()
+        if busy:
+            return jsonerr(409, 'یکی از دو طرف در تماس دیگری است')
+        cur = c.execute('INSERT INTO calls(caller,callee,kind,state,ts) VALUES (?,?,?,?,?)',
+                        (u, peer, kind, 'ringing', time.time()))
+        cid = cur.lastrowid
+    return jsonify(cid=cid, kind=kind)
+
+
+@app.post('/api/calls/<int:cid>/signal')
+def call_signal(cid):
+    u = uid()
+    d = request.get_json(silent=True) or {}
+    payload = d.get('payload')
+    if payload is None:
+        return jsonerr(400, 'payload لازم است')
+    with db() as c:
+        row = c.execute('SELECT * FROM calls WHERE id=?', (cid,)).fetchone()
+        if not row or u not in (row['caller'], row['callee']):
+            abort(403)
+        if row['state'] not in CALL_ACTIVE:
+            return jsonerr(400, 'تماس فعال نیست')
+        other = row['callee'] if row['caller'] == u else row['caller']
+        c.execute('INSERT INTO call_signals(cid,from_u,to_u,payload,ts) VALUES (?,?,?,?,?)',
+                  (cid, u, other, json.dumps(payload)[:32768], time.time()))
+    return jsonify(ok=1)
+
+
+@app.post('/api/calls/<int:cid>/state')
+def call_state(cid):
+    u = uid()
+    d = request.get_json(silent=True) or {}
+    st = d.get('state')
+    if st not in CALL_STATES:
+        return jsonerr(400, 'state نامعتبر است')
+    with db() as c:
+        row = c.execute('SELECT * FROM calls WHERE id=?', (cid,)).fetchone()
+        if not row or u not in (row['caller'], row['callee']):
+            abort(403)
+        now = time.time()
+        if st == 'accept':
+            if row['state'] != 'ringing' or row['callee'] != u:
+                return jsonerr(400, 'قابل پذیرش نیست')
+            c.execute("UPDATE calls SET state='active', answered=? WHERE id=?", (now, cid))
+        elif st == 'reject':
+            if row['callee'] != u or row['state'] != 'ringing':
+                return jsonerr(400, 'قابل رد شدن نیست')
+            c.execute("UPDATE calls SET state='rejected', ended=? WHERE id=?", (now, cid))
+        elif st == 'missed':
+            if row['caller'] != u or row['state'] != 'ringing':
+                return jsonerr(400, 'قابل لغو نیست')
+            c.execute("UPDATE calls SET state='missed', ended=? WHERE id=?", (now, cid))
+        else:  # end
+            c.execute("UPDATE calls SET state='ended', ended=? WHERE id=? AND state IN (?,?)",
+                      (now, cid, *CALL_ACTIVE))
+    return jsonify(ok=1)
+
+
 @app.get('/api/sync')
 def sync():
     u = uid()
     with db() as c:
+        housekeep_calls(c)
         online = [x['id'] for x in c.execute(
             'SELECT id FROM users WHERE active=1 AND last_seen>?', (time.time() - ONLINE_WINDOW,))]
-        return jsonify(rooms=rooms_payload(c, u), online=online, ts=time.time())
+        call = call_payload(c, u, request.args.get('cs', 0, type=int))
+        return jsonify(rooms=rooms_payload(c, u), online=online, call=call, ts=time.time())
 
 @app.get('/api/search')
 def search():
@@ -1064,6 +1199,12 @@ def ensure_tls_cert():
     return cert, key
 
 if __name__ == '__main__':
+    import sys
+    try:  # جلوگیری از کرش UnicodeEncodeError در محیط Scheduled Task (خروجی بدون کنسول UTF-8)
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
     init_db()
     if TLS_ENABLED:
         cpath, kpath = ensure_tls_cert()

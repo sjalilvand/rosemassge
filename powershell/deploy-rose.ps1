@@ -120,7 +120,7 @@ function Get-SecurePlain($secure) {
 
 $pyExe = Join-Path $InstallDir '.venv\Scripts\python.exe'
 $taskAct = 'cmd.exe'
-$taskArg = '/c "cd /d ' + $InstallDir + ' && if not exist logs mkdir logs && .venv\Scripts\python.exe app.py >> logs\rose.log 2>&1"'
+$taskArg = '/c "cd /d ' + $InstallDir + ' && if not exist logs mkdir logs && set PYTHONIOENCODING=utf-8&& .venv\Scripts\python.exe app.py >> logs\rose.log 2>&1"'
 
 # ---------- مدیریت سرویس ----------
 function Stop-Rose {

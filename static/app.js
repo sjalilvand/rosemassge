@@ -147,7 +147,7 @@ function enterApp(u) {
 /* ================= حلقه‌های هم‌گام‌سازی ================= */
 async function syncTick() {
   if (!S.me) return;
-  const d = await api('sync');
+  const d = await api('sync' + (window.RoseCall ? '?cs=' + RoseCall.lastSig() : ''));
   S.rooms = d.rooms; S.online = new Set(d.online);
   for (const r of d.rooms) {
     const lid = r.last ? r.last.id : 0, p = prevLast[r.id] || 0;
@@ -158,6 +158,7 @@ async function syncTick() {
     prevLast[r.id] = lid;
   }
   try { const [us, un] = await Promise.all([api('users'), api('units')]); S.users = us; S.units = un; } catch (_) {}
+  if (window.RoseCall) { try { RoseCall.onSync(d.call); } catch (_) {} }
   renderRooms();
   if (S.tab === 'contacts' && !searching()) renderContacts();
   updateTitle();
@@ -375,6 +376,10 @@ function renderHeaderBase() {
   if (r.kind === 'private' && r.peer) avw.append(avEl(r.peer.name, r.peer.avatar, 'md'));
   else avw.append(groupAv('md'));
   $('#chName').textContent = roomName(r);
+  const callOk = !!(r.kind === 'private' && r.peer) && !!window.RoseCall;
+  const ca = $('#chCallA'), cv = $('#chCallV');
+  if (ca) ca.hidden = !callOk;
+  if (cv) cv.hidden = !callOk;
 }
 function updateHeader() {
   const r = S.cur; if (!r) return;

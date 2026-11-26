@@ -328,3 +328,43 @@ table.ad-t select{padding:5px 8px;border:1px solid var(--line);border-radius:8px
   .m-act{left:auto;top:-30px}
 }
 @media(min-width:821px){#chBack{display:none!important}}
+
+/* ---------- تماس صوتی و تصویری ---------- */
+.call-overlay{position:fixed;inset:0;z-index:120;background:#1d1119;display:flex;flex-direction:column;
+  align-items:stretch}
+.call-overlay #cRemote{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#140d12}
+.call-overlay #cRemote.connecting{background:
+  radial-gradient(circle at 50% 40%,#3a2233 0,#140d12 70%)}
+.call-overlay.audio-only #cRemote{object-fit:contain;opacity:.45}
+.call-pip{position:absolute;bottom:96px;inset-inline-start:16px;width:min(200px,26vw);aspect-ratio:4/3;
+  object-fit:cover;border-radius:14px;border:2px solid rgba(255,255,255,.35);
+  box-shadow:0 6px 24px rgba(0,0,0,.45);background:#241822;transform:scaleX(-1);z-index:2}
+.call-overlay.audio-only .call-pip{display:none}
+.call-top{position:relative;z-index:3;display:flex;align-items:center;gap:12px;padding:18px 20px;
+  background:linear-gradient(180deg,rgba(20,10,18,.75),transparent);color:#fff}
+.call-av .av{box-shadow:0 0 0 2px rgba(255,255,255,.5)}
+.call-tt{display:flex;flex-direction:column;line-height:1.5}
+.call-tt strong{font-size:17px}
+.call-tt #cStatus{font-size:13px;color:#e9c4d4}
+.call-timer{margin-inline-start:auto;background:rgba(255,255,255,.14);padding:4px 12px;border-radius:999px;
+  font-variant-numeric:tabular-nums;font-size:14px}
+.call-controls{position:relative;z-index:3;margin-top:auto;display:flex;justify-content:center;gap:18px;
+  padding:22px 16px calc(26px + env(safe-area-inset-bottom,0px));
+  background:linear-gradient(0deg,rgba(20,10,18,.8),transparent)}
+.call-btn{width:58px;height:58px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,.14);color:#fff;transition:.15s;backdrop-filter:blur(4px)}
+.call-btn svg{width:26px;height:26px}
+.call-btn:hover{background:rgba(255,255,255,.26)}
+.call-btn.off{background:rgba(255,255,255,.32)}
+.call-btn.danger{background:var(--err)}
+.call-btn.danger:hover{background:#a53125}
+.call-btn.danger svg{transform:rotate(135deg)}
+.call-btn.accept{background:var(--ok)}
+.call-btn.accept:hover{background:#028a60}
+.call-btn.big{width:66px;height:66px}
+
+.ring-card{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;
+  padding:34px 36px;min-width:min(320px,86vw);animation:ringpulse 1.6s ease-in-out infinite}
+.ring-kind{color:var(--mut);font-size:13px}
+.ring-btns{display:flex;gap:18px;margin-top:14px}
+@keyframes ringpulse{0%,100%{box-shadow:var(--shadow)}50%{box-shadow:0 0 0 6px rgba(166,63,104,.12),0 8px 30px rgba(111,35,64,.22)}}
