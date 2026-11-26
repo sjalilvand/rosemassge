@@ -133,11 +133,24 @@ function Stop-Rose {
 function Start-Rose {
   try {
     Start-ScheduledTask -TaskName $TaskName
-    Start-Sleep -Seconds 4
-    try {
-      $h = Invoke-WebRequest -UseBasicParsing ("http://127.0.0.1:{0}/api/health" -f $Port) -TimeoutSec 10
-      Write-Ok ("سرویس فعال است: " + $h.Content)
-    } catch { Write-Wr "پاسخ سلامت دریافت نشد؛ لاگ را ببینید: $InstallDir\logs\rose.log" }
+    Write-Step "در انتظار آماده شدن سرویس (حداکثر ۶۰ ثانیه)..."
+    $ok = $false
+    for ($i = 1; $i -le 12; $i++) {
+      Start-Sleep -Seconds 5
+      try {
+        $h = Invoke-WebRequest -UseBasicParsing ("http://127.0.0.1:{0}/api/health" -f $Port) -TimeoutSec 5
+        Write-Ok ("سرویس فعال است: " + $h.Content)
+        $ok = $true
+        break
+      } catch { Write-Wr ("تلاش $i از ۱۲؛ سرویس هنوز بالا نیامده...") }
+    }
+    if (-not $ok) {
+      Write-Wr "پاسخ سلامت دریافت نشد؛ لاگ را ببینید: $InstallDir\logs\rose.log"
+      if (Test-Path "$InstallDir\logs\rose.log") {
+        Write-Wr "آخرین خطوط لاگ:"
+        Get-Content "$InstallDir\logs\rose.log" -Tail 15 | ForEach-Object { Write-Host ("    " + $_) }
+      }
+    }
   } catch { Write-Wr "سرویسی به نام $TaskName یافت نشد؛ ابتدا -Action install را اجرا کنید" }
 }
 
