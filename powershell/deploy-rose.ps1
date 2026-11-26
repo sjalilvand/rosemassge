@@ -16,6 +16,8 @@ param(
   [string]$Branch       = 'main',
   [string]$AdminUser    = 'admin',
   [string]$AdminPassword= '',
+  [string]$SourceZip    = '',
+  [string]$PythonInstaller = '',
   [switch]$HTTPS
 )
 
@@ -46,6 +48,8 @@ if (-not $wp.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
   $a = @('-File', $PSCommandPath, '-Action', $Action, '-InstallDir', $InstallDir,
          '-Port', $Port, '-RepoUrl', $RepoUrl, '-Branch', $Branch, '-AdminUser', $AdminUser)
   if ($AdminPassword) { $a += @('-AdminPassword', $AdminPassword) }
+  if ($SourceZip)     { $a += @('-SourceZip', $SourceZip) }
+  if ($PythonInstaller) { $a += @('-PythonInstaller', $PythonInstaller) }
   if ($HTTPS) { $a += '-HTTPS' }
   Start-Process powershell -Verb RunAs -ArgumentList $a -Wait
   exit
@@ -61,33 +65,36 @@ foreach ($regPath in @('HKLM:\SOFTWARE\Microsoft\.NetFramework\v4.0.30319',
   } catch {}
 }
 
-# ---------- دانلود مقاوم: Invoke-WebRequest → curl.exe → BITS ----------
+# ---------- دانلود مقاوم: چند آدرس × سه روش (IWR → curl.exe → BITS) ----------
+# توجه: raw.githubusercontent.com روی CDN فست‌لای سرو می‌شود و از IPهای ایران مسدود است؛
+# فقط از آدرس‌هایی استفاده می‌کنیم که روی زیرساخت خود گیت‌هاب هستند.
 function Get-RemoteFile {
-  param([string]$Uri, [string]$OutFile)
+  param([string[]]$Uris, [string]$OutFile)
   $lastErr = $null
-  # تلاش ۱: Invoke-WebRequest (با TLS 1.2 اجباری)
-  try {
-    Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -TimeoutSec 600
-    if ((Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
-  } catch { $lastErr = $_ }
-  Write-Wr "روش ۱ ناموفق بود؛ تلاش با curl.exe ..."
-  # تلاش ۲: curl.exe (در ویندوز ۱۰/۱۱ و سرور ۲۰۱۹ به بعد داخلی است)
-  try {
-    $curl = (Get-Command curl.exe -ErrorAction SilentlyContinue).Source
-    if ($curl) {
+  foreach ($Uri in $Uris) {
+    # روش ۱: Invoke-WebRequest (با TLS 1.2 اجباری)
+    try {
+      Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -TimeoutSec 600
+      if ((Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
+    } catch { $lastErr = $_ }
+    # روش ۲: curl.exe (در ویندوز ۱۰/۱۱ و سرور ۲۰۱۹ به بعد داخلی است)
+    try {
+      $curl = (Get-Command curl.exe -ErrorAction SilentlyContinue).Source
+      if ($curl) {
+        Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
+        & $curl.exe -fsSL --retry 3 --retry-delay 2 -o $OutFile $Uri
+        if ($LASTEXITCODE -eq 0 -and (Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
+      }
+    } catch { $lastErr = $_ }
+    # روش ۳: BITS (از پشته WinHTTP سیستم استفاده می‌کند)
+    try {
       Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
-      & $curl.exe -fsSL --retry 3 --retry-delay 2 -o $OutFile $Uri
-      if ($LASTEXITCODE -eq 0 -and (Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
-    }
-  } catch { $lastErr = $_ }
-  Write-Wr "روش ۲ ناموفق بود؛ تلاش با BITS ..."
-  # تلاش ۳: BITS (از پشته WinHTTP سیستم استفاده می‌کند)
-  try {
-    Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
-    Start-BitsTransfer -Source $Uri -Destination $OutFile -ErrorAction Stop
-    if ((Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
-  } catch { $lastErr = $_ }
-  throw ("دانلود ناموفق بود: {0}`nآخرین خطا: {1}" -f $Uri, $lastErr)
+      Start-BitsTransfer -Source $Uri -Destination $OutFile -ErrorAction Stop
+      if ((Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
+    } catch { $lastErr = $_ }
+    Write-Wr ("این آدرس پاسخ نداد: " + $Uri)
+  }
+  throw ("دانلود از همه آدرس‌ها ناموفق بود. آخرین خطا: {0}" -f $lastErr)
 }
 
 function Find-Python {
@@ -160,7 +167,15 @@ $sysPy = Find-Python
 if (-not $sysPy) {
   Write-Wr "Python یافت نشد؛ نصب خودکار Python $PythonVer ..."
   $inst = Join-Path $env:TEMP ("python-{0}-amd64.exe" -f $PythonVer)
-  Get-RemoteFile -Uri ("https://www.python.org/ftp/python/{0}/python-{0}-amd64.exe" -f $PythonVer) -OutFile $inst
+  if ($PythonInstaller -and (Test-Path $PythonInstaller)) {
+    Copy-Item $PythonInstaller -Destination $inst -Force
+    Write-Ok ("نصب آفلاین Python از: " + $PythonInstaller)
+  } else {
+    Get-RemoteFile -Uris @(
+      ("https://www.python.org/ftp/python/{0}/python-{0}-amd64.exe" -f $PythonVer),
+      ("https://registry.npmmirror.com/-/binary/python/{0}/python-{0}-amd64.exe" -f $PythonVer)
+    ) -OutFile $inst
+  }
   $p = Start-Process -FilePath $inst -ArgumentList '/quiet', 'InstallAllUsers=1', 'PrependPath=1', 'Include_test=0', 'Include_launcher=1' -Wait -PassThru
   if ($p.ExitCode -ne 0) { throw "نصب Python ناموفق بود (کد $($p.ExitCode))" }
   $sysPy = Find-Python
@@ -168,10 +183,20 @@ if (-not $sysPy) {
 }
 Write-Ok ("Python: " + $sysPy)
 
-Write-Step "۲/۸ دریافت سورس از گیت‌هاب"
-$tmp   = Join-Path $env:TEMP ('rose-src-' + [guid]::NewGuid().ToString('N'))
-$zip   = Join-Path $env:TEMP 'rosemassge-main.zip'
-Get-RemoteFile -Uri ("{0}/archive/refs/heads/{1}.zip" -f $RepoUrl, $Branch) -OutFile $zip
+Write-Step "۲/۸ دریافت سورس (آفلاین یا از گیت‌هاب)"
+$tmp = Join-Path $env:TEMP ('rose-src-' + [guid]::NewGuid().ToString('N'))
+$zip = Join-Path $env:TEMP 'rosemassge-main.zip'
+if ($SourceZip -and (Test-Path $SourceZip)) {
+  Copy-Item $SourceZip -Destination $zip -Force
+  Write-Ok ("نصب آفلاین از فایل: " + $SourceZip)
+} else {
+  $repoPath = ($RepoUrl -replace '^https?://github\.com/', '').TrimEnd('/')
+  # فقط ZIP آرشیو (github.com و codeload — زیرساخت خود گیت‌هاب، بدون فست‌لای)
+  Get-RemoteFile -Uris @(
+    ("https://github.com/{0}/archive/refs/heads/{1}.zip" -f $repoPath, $Branch),
+    ("https://codeload.github.com/{0}/zip/refs/heads/{1}" -f $repoPath, $Branch)
+  ) -OutFile $zip
+}
 if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
 Expand-Archive -Path $zip -DestinationPath $tmp -Force
 $srcRoot = Get-ChildItem $tmp -Directory | Select-Object -First 1
@@ -190,8 +215,17 @@ Write-Ok "فایل‌ها کپی شد (data و .env دست‌نخورده مان
 
 Write-Step "۴/۸ ساخت محیط مجازی و نصب وابستگی‌ها"
 if (-not (Test-Path "$InstallDir\.venv")) { & $sysPy -m venv "$InstallDir\.venv" }
-& $pyExe -m pip install --upgrade pip --quiet
+try { & $pyExe -m pip install --upgrade pip --quiet } catch {}
 & $pyExe -m pip install -r "$InstallDir\requirements.txt" --quiet
+if ($LASTEXITCODE -ne 0) {
+  # اگر PyPI (فایل‌های pythonhosted روی فست‌لای) از سرور در دسترس نبود، از آینه‌های جایگزین:
+  Write-Wr "نصب از PyPI ناموفق بود؛ تلاش با آینه جایگزین ۱ ..."
+  & $pyExe -m pip install -r "$InstallDir\requirements.txt" --quiet --index-url https://pypi.tuna.tsinghua.edu.cn/simple
+  if ($LASTEXITCODE -ne 0) {
+    Write-Wr "تلاش با آینه جایگزین ۲ ..."
+    & $pyExe -m pip install -r "$InstallDir\requirements.txt" --quiet --index-url https://mirrors.aliyun.com/pypi/simple/
+  }
+}
 if ($LASTEXITCODE -ne 0) { throw "نصب وابستگی‌ها ناموفق بود" }
 Write-Ok "وابستگی‌ها نصب شد (Flask, waitress, cryptography)"
 

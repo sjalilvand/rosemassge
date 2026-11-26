@@ -7,7 +7,8 @@ param(
   [string]$InstallDir = 'C:\RoseMessenger',
   [string]$RepoUrl    = 'https://github.com/sjalilvand/rosemassge',
   [string]$Branch     = 'main',
-  [int]$Port          = 8088
+  [int]$Port          = 8088,
+  [string]$SourceZip  = ''
 )
 $ErrorActionPreference = 'Stop'
 $TaskName = 'RoseMessenger'
@@ -21,30 +22,31 @@ try {
   try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 }
 
-# ---------- دانلود مقاوم: Invoke-WebRequest → curl.exe → BITS ----------
+# ---------- دانلود مقاوم: چند آدرس × سه روش (IWR → curl.exe → BITS) ----------
 function Get-RemoteFile {
-  param([string]$Uri, [string]$OutFile)
+  param([string[]]$Uris, [string]$OutFile)
   $lastErr = $null
-  try {
-    Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -TimeoutSec 600
-    if ((Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
-  } catch { $lastErr = $_ }
-  Write-Host "[!]  روش ۱ ناموفق بود؛ تلاش با curl.exe ..." -ForegroundColor Yellow
-  try {
-    $curl = (Get-Command curl.exe -ErrorAction SilentlyContinue).Source
-    if ($curl) {
+  foreach ($Uri in $Uris) {
+    try {
+      Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -TimeoutSec 600
+      if ((Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
+    } catch { $lastErr = $_ }
+    try {
+      $curl = (Get-Command curl.exe -ErrorAction SilentlyContinue).Source
+      if ($curl) {
+        Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
+        & $curl.exe -fsSL --retry 3 --retry-delay 2 -o $OutFile $Uri
+        if ($LASTEXITCODE -eq 0 -and (Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
+      }
+    } catch { $lastErr = $_ }
+    try {
       Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
-      & $curl.exe -fsSL --retry 3 --retry-delay 2 -o $OutFile $Uri
-      if ($LASTEXITCODE -eq 0 -and (Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
-    }
-  } catch { $lastErr = $_ }
-  Write-Host "[!]  روش ۲ ناموفق بود؛ تلاش با BITS ..." -ForegroundColor Yellow
-  try {
-    Remove-Item $OutFile -Force -ErrorAction SilentlyContinue
-    Start-BitsTransfer -Source $Uri -Destination $OutFile -ErrorAction Stop
-    if ((Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
-  } catch { $lastErr = $_ }
-  throw ("دانلود ناموفق بود: {0}`nآخرین خطا: {1}" -f $Uri, $lastErr)
+      Start-BitsTransfer -Source $Uri -Destination $OutFile -ErrorAction Stop
+      if ((Get-Item $OutFile -ErrorAction Stop).Length -gt 0) { return }
+    } catch { $lastErr = $_ }
+    Write-Host ("[!]  این آدرس پاسخ نداد: " + $Uri) -ForegroundColor Yellow
+  }
+  throw ("دانلود از همه آدرس‌ها ناموفق بود. آخرین خطا: {0}" -f $lastErr)
 }
 
 Write-Host "==> توقف سرویس" -ForegroundColor Magenta
@@ -53,7 +55,16 @@ try { Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue } cat
 Write-Host "==> دریافت نسخه جدید از گیت‌هاب" -ForegroundColor Magenta
 $tmp = Join-Path $env:TEMP ('rose-upd-' + [guid]::NewGuid().ToString('N'))
 $zip = Join-Path $env:TEMP 'rosemassge-update.zip'
-Get-RemoteFile -Uri ("{0}/archive/refs/heads/{1}.zip" -f $RepoUrl, $Branch) -OutFile $zip
+if ($SourceZip -and (Test-Path $SourceZip)) {
+  Copy-Item $SourceZip -Destination $zip -Force
+  Write-Host ("به‌روزرسانی آفلاین از فایل: " + $SourceZip) -ForegroundColor Green
+} else {
+  $repoPath = ($RepoUrl -replace '^https?://github\.com/', '').TrimEnd('/')
+  Get-RemoteFile -Uris @(
+    ("https://github.com/{0}/archive/refs/heads/{1}.zip" -f $repoPath, $Branch),
+    ("https://codeload.github.com/{0}/zip/refs/heads/{1}" -f $repoPath, $Branch)
+  ) -OutFile $zip
+}
 Expand-Archive -Path $zip -DestinationPath $tmp -Force
 $src = (Get-ChildItem $tmp -Directory | Select-Object -First 1).FullName
 
